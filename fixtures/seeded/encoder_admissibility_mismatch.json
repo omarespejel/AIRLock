@@ -1,0 +1,35 @@
+{
+  "schema": "airlock.audit-ir",
+  "schema_version": "0.1.0",
+  "airlock_version": "0.1.0",
+  "components": [
+    {
+      "name": "down-encoder-mismatch",
+      "log_size": 4,
+      "domain_size": 16,
+      "columns": [],
+      "constraints": [],
+      "relations": [],
+      "preprocessed": [],
+      "declared_max_constraint_log_degree_bound": 3,
+      "contract": {
+        "public_inputs": [],
+        "public_outputs": [],
+        "integer_obligations": [
+          {
+            "name": "regular_down_projection",
+            "encoding": {
+              "biased_bits": {
+                "bias": 134217728,
+                "bits": 28
+              }
+            },
+            "abs_bound": 369098752
+          }
+        ],
+        "assumptions": []
+      },
+      "logup_finalized": true
+    }
+  ]
+}
