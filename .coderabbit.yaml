@@ -1,0 +1,174 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit config for AIRLock.
+# Schema: https://docs.coderabbit.ai/reference/configuration
+# Resolved on a PR with: @coderabbitai configuration
+language: en-US
+
+early_access: false
+enable_free_tier: true
+tone_instructions: |
+  Prioritize AIR soundness, exporter faithfulness, integer/lookup semantics,
+  coverage fail-closed behavior, claim hygiene, and regression risk. Avoid
+  style-only remarks unless they hide correctness, security, or overclaim risk.
+  Keep comments concise and actionable. Never treat a green AIR lint as
+  whole-system STARK security.
+
+reviews:
+  profile: assertive
+  request_changes_workflow: false
+  high_level_summary: true
+  review_details: true
+  changed_files_summary: true
+  high_level_summary_in_walkthrough: false
+  poem: false
+  review_status: true
+  commit_status: true
+  fail_commit_status: true
+  collapse_walkthrough: true
+  sequence_diagrams: false
+  estimate_code_review_effort: true
+  assess_linked_issues: true
+  related_issues: false
+  related_prs: false
+  suggested_labels: true
+  auto_apply_labels: false
+  suggested_reviewers: false
+  enable_prompt_for_ai_agents: true
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 5
+    drafts: false
+    base_branches:
+      - main
+      - bootstrap/.*
+      - chore/.*
+      - feat/.*
+      - fix/.*
+    labels: []
+    ignore_title_keywords:
+      - WIP
+      - DO NOT MERGE
+      - artifact-only
+    ignore_usernames:
+      - github-actions[bot]
+      - dependabot[bot]
+      - coderabbitai[bot]
+      - qodo-code-review
+  path_filters:
+    - .coderabbit.yaml
+    - .pr_agent.toml
+    - .qodo/**
+    - AGENTS.md
+    - .github/**
+    - .gitignore
+    - Cargo.toml
+    - Cargo.lock
+    - rust-toolchain.toml
+    - crates/**
+    - fixtures/**
+    - docs/**
+    - schemas/**
+    - tools/**
+    - README.md
+    - SPEC.md
+    - "!target/**"
+    - "!**/*.secret"
+    - "!**/*.key"
+    - "!**/*.pem"
+  path_instructions:
+    - path: "crates/airlock-ir/**"
+      instructions: |
+        Review as the trusted AuditIR schema. Flag losslessness gaps: missing
+        uncompressed LogUp entries, missing preprocessed concrete values or
+        generator hashes, missing commitment phases, missing row support, or
+        any IR change that silently drops semantic annotations. Flag schema
+        bumps without migration notes.
+    - path: "crates/airlock-lint/**"
+      instructions: |
+        Review as the static AIR gate. Flag false greens (timeout/unmodeled as
+        pass), hard-coded attack scripts instead of generic rules, missing Q8
+        support/functionality checks, missing encoder vs admitted-bound checks,
+        and any path that collapses AIR results into whole-system soundness.
+    - path: "crates/airlock-cli/**"
+      instructions: |
+        Review CLI lane separation. Flag any subcommand that implies protocol,
+        FRI, or evidence security from AIR-only analysis. Check exit codes fail
+        closed on StaticFail / non-COVERED required surfaces.
+    - path: "fixtures/**"
+      instructions: |
+        Review seeded defect fixtures. Vulnerable fixtures must fail the gate;
+        fixed fixtures must pass or state residual UNKNOWN. Flag fixtures that
+        bake the attack into the lint instead of exercising generic rules.
+        Require pinned defect ids and expected FindingCode lists.
+    - path: "docs/**"
+      instructions: |
+        Review claim hygiene. Flag wording that presents AIRLock UNSAT as a Lean
+        theorem, presents AIR analysis as Circle-FRI/FS security, or omits the
+        four-lane report (AIR / statement / protocol / evidence).
+    - path: "schemas/**"
+      instructions: |
+        Review JSON Schema and IR contracts for breaking changes, optional
+        fields that should be required for COVERED status, and documentation
+        drift vs Rust types.
+    - path: "README.md"
+      instructions: |
+        Check that public status matches code. Flag unsupported soundness
+        claims, missing non-claims, and instructions that tell users a green
+        AIRLock run proves SparseProve or Stwo security.
+    - path: ".github/**"
+      instructions: |
+        Review as reviewer-control-plane. Flag instructions that weaken the
+        evidence standard, encourage draft PRs by default, hide validation
+        failures, or let AI reviewers focus on style instead of soundness.
+    - path: ".coderabbit.yaml"
+      instructions: |
+        Review as CodeRabbit control plane. Flag weakened profiles, path filters
+        that exclude trusted IR/lint code, or instructions that invite style
+        bikeshedding on research tooling.
+    - path: ".pr_agent.toml"
+      instructions: |
+        Review as Qodo Merge control plane. Prefer /agentic_review and
+        /agentic_describe. Flag configs that disable adversarial/test focus or
+        enable noisy code-suggestion spam for this research repo.
+  labeling_instructions:
+    - label: air-ir
+      instructions: "Apply when a PR changes AuditIR types, schema, hashing, or exporters."
+    - label: air-lint
+      instructions: "Apply when a PR changes static analyses, finding codes, or seeded fixtures."
+    - label: research-docs
+      instructions: "Apply when a PR changes README, SPEC, docs, or claim boundaries."
+    - label: reviewer-setup
+      instructions: "Apply when a PR changes CodeRabbit, Qodo, Copilot, issue, or PR templates."
+    - label: needs-soundness-check
+      instructions: "Apply when a PR changes lookup support, integer encodings, phases, or solver semantics."
+  pre_merge_checks:
+    custom_checks:
+      - mode: error
+        name: "No whole-system soundness overclaim"
+        instructions: |
+          Fail if a PR presents AIRLock static PASS, solver UNSAT, or mutation
+          score as proving Circle-FRI, Fiat-Shamir, transcript composition,
+          receipt parsing, or end-to-end SparseProve security.
+      - mode: error
+        name: "No timeout-as-green"
+        instructions: |
+          Fail if UNKNOWN, timeout, UNSUPPORTED, or unmodeled scope is treated
+          as a green / COVERED / release-ready result.
+      - mode: warning
+        name: "Seeded defect coverage"
+        instructions: |
+          Warn if lint or exporter semantics change without updating or running
+          seeded defect fixtures (Q8 padding, encoder/admissibility, etc.).
+      - mode: warning
+        name: "Validation commands"
+        instructions: |
+          Warn if the PR body omits exact local validation commands
+          (cargo test / clippy / airlock air --manifest ...).
+
+chat:
+  auto_reply: false
+
+knowledge_base:
+  learnings:
+    scope: auto
