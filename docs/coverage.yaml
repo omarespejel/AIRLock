@@ -1,0 +1,23 @@
+schema: airlock.coverage
+surfaces:
+  - name: fused-stage-a-q7
+    status: UNSUPPORTED
+    note: "Pilot target; Stwo AuditEvaluator exporter not landed yet."
+    profile_region: "all-admitted-shapes"
+  - name: fused-stage-a-q8
+    status: QUARANTINED
+    note: "Quarantine until padded-table support defect is fixed upstream or modeled and fixed here."
+  - name: shared-silu-exp-tables
+    status: UNSUPPORTED
+    note: "Required COVERED after exporter lands."
+  - name: fused-output-integer-binding
+    status: UNSUPPORTED
+  - name: rank-and-route-air
+    status: UNSUPPORTED
+    note: "After Stage A pilot."
+  - name: grouped-down-legacy
+    status: QUARANTINED
+    note: "Must remain listed; α-in-M31 path must not disappear silently."
+  - name: warp-streaming
+    status: UNSUPPORTED
+    note: "Out of v1 scope."

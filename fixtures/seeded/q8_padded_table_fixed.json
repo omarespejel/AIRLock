@@ -1,0 +1,184 @@
+{
+  "schema": "airlock.audit-ir",
+  "schema_version": "0.1.0",
+  "airlock_version": "0.1.0",
+  "components": [
+    {
+      "name": "stage-a-nonlinear-q8-fixed",
+      "log_size": 5,
+      "domain_size": 32,
+      "columns": [
+        {
+          "id": "table_code",
+          "name": "table_code",
+          "commitment_phase": "phase0_public",
+          "offsets": [
+            0
+          ],
+          "kind": "preprocessed",
+          "semantic_type": "table_key",
+          "declared_support": {
+            "range": {
+              "start": 0,
+              "end": 16
+            }
+          }
+        },
+        {
+          "id": "table_silu",
+          "name": "table_silu",
+          "commitment_phase": "phase0_public",
+          "offsets": [
+            0
+          ],
+          "kind": "preprocessed",
+          "semantic_type": "table_value",
+          "declared_support": {
+            "range": {
+              "start": 0,
+              "end": 16
+            }
+          }
+        },
+        {
+          "id": "table_mult",
+          "name": "table_mult",
+          "commitment_phase": "phase1_original",
+          "offsets": [
+            0
+          ],
+          "kind": "witness",
+          "semantic_type": "table_multiplicity",
+          "declared_support": {
+            "range": {
+              "start": 0,
+              "end": 16
+            }
+          }
+        }
+      ],
+      "constraints": [],
+      "relations": [
+        {
+          "relation": "SiLU",
+          "role": "table",
+          "tuple": [
+            {
+              "op": "column",
+              "id": "table_code",
+              "offset": 0
+            },
+            {
+              "op": "column",
+              "id": "table_silu",
+              "offset": 0
+            }
+          ],
+          "multiplicity": {
+            "op": "column",
+            "id": "table_mult",
+            "offset": 0
+          },
+          "row_support": {
+            "range": {
+              "start": 0,
+              "end": 16
+            }
+          },
+          "challenge_phase": "phase2_interaction",
+          "source_location": "fixtures::q8"
+        }
+      ],
+      "preprocessed": [
+        {
+          "id": "table_code",
+          "semantic_length": 16,
+          "physical_length": 32,
+          "values_hash": "93a561ec3a980308d281af92eeefc18426a19d4294674a46324f382898b8f890",
+          "values": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "table_silu",
+          "semantic_length": 16,
+          "physical_length": 32,
+          "values_hash": "69009290bc06c17e987aa50e43fd4e82a022f6d63cd074a239dfdf4d86f17ad7",
+          "values": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "declared_max_constraint_log_degree_bound": 5,
+      "contract": {
+        "public_inputs": [],
+        "public_outputs": [],
+        "integer_obligations": [],
+        "assumptions": []
+      },
+      "logup_finalized": true
+    }
+  ]
+}
