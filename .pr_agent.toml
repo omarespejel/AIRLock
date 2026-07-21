@@ -1,0 +1,75 @@
+# Qodo Merge (formerly PR-Agent) configuration for AIRLock.
+# Docs: https://docs.qodo.ai/install-and-configure/configuration-overview/configuration-file
+# Prefer modern agentic commands over legacy /review alone.
+# Only override what we need; do not paste entire upstream defaults.
+
+[github_app]
+pr_commands = [
+  "/agentic_describe",
+  "/agentic_review"
+]
+# Re-review on push so incremental AIR/IR changes stay covered.
+handle_push_trigger = true
+push_commands = [
+  "/agentic_review"
+]
+
+[config]
+# Keep reviews focused; this is a research assurance tool, not an app CRUD repo.
+verbosity_level = 1
+
+[review_agent]
+comments_location_policy = "both"
+inline_comments_severity_threshold = 3
+issues_user_guidelines = """
+Review AIRLock as adversarial AIR assurance tooling for Stwo.
+
+Prioritize, in order:
+1. Exporter / AuditIR faithfulness (lossless constraints, uncompressed LogUp,
+   concrete preprocessed values or hashed generators, commitment phases).
+2. Static-gate correctness (support/padding/multiplicity, lookup functionality,
+   encoder vs admitted bounds, fail-closed coverage statuses).
+3. Result vocabulary honesty (CONFIRMED_SAT vs BAD_CHALLENGE vs UNSAT_SOLVER
+   vs UNSAT_CHECKED vs UNKNOWN vs OUT_OF_MODEL; never timeout-as-green).
+4. Lane separation (AIR vs statement-binding vs protocol/FRI vs evidence).
+5. Seeded defect rediscovery without hard-coded file/column attack scripts.
+6. Claim hygiene in docs/README (no whole-system STARK soundness from AIR).
+
+Ignore pure style unless it hides correctness or overclaim risk.
+"""
+compliance_user_guidelines = """
+Every PR that changes IR schema, lints, or fixtures must state:
+- which seeded defects are expected to fire or stay fixed;
+- exact validation commands;
+- whether COVERED / UNSUPPORTED / QUARANTINED / UNKNOWN semantics changed;
+- whether any doc claim could be read as end-to-end cryptographic security.
+"""
+
+[pr_reviewer]
+require_tests_review = true
+require_score_review = false
+extra_instructions = """
+Focus findings on:
+- missing preprocessed concreteness or semantic_length vs physical_length;
+- compressed-only LogUp views that drop tuple/multiplicity/role;
+- existential challenge modeling that confuses BAD_CHALLENGE with CONFIRMED_SAT;
+- coverage manifests that omit executable surfaces;
+- green results on UNKNOWN/UNSUPPORTED;
+- docs that collapse lanes into sound=true.
+
+Avoid generic refactoring suggestions unless they reduce real correctness risk.
+Prefer pointing at exact FindingCode, fixture, or schema field.
+"""
+
+[pr_description]
+publish_description_as_comment = false
+add_original_user_description = true
+extra_instructions = """
+The PR description should state the assurance lane touched: air-ir, air-lint,
+solver, witness-injection, protocol (out of AIRLock v0), or reviewer-setup.
+It should list exact validation commands and whether claim boundaries changed.
+"""
+
+[pr_code_suggestions]
+# Keep suggestion spam off; we want defect findings, not drive-by refactors.
+num_code_suggestions = 0
