@@ -56,6 +56,9 @@ pub struct AuditEvaluator {
     pub preprocessed_columns: Vec<PreProcessedColumnId>,
     /// Whether finalize_logup was called.
     pub logup_finalized: bool,
+    /// Structural problems that would otherwise panic Stwo's ExprEvaluator.
+    /// Export fails closed on these instead of crashing the host process.
+    pub structural_errors: Vec<String>,
     intermediates: HashMap<String, BaseExpr>,
     ext_intermediates: HashMap<String, ExtExpr>,
     ordered_intermediates: Vec<String>,
@@ -77,6 +80,7 @@ impl AuditEvaluator {
             relations: Vec::new(),
             preprocessed_columns: Vec::new(),
             logup_finalized: false,
+            structural_errors: Vec::new(),
             intermediates: HashMap::new(),
             ext_intermediates: HashMap::new(),
             ordered_intermediates: Vec::new(),
@@ -84,14 +88,22 @@ impl AuditEvaluator {
         }
     }
 
-    fn combine_formal<R: Relation<BaseExpr, ExtExpr>>(relation: &R, values: &[BaseExpr]) -> ExtExpr {
+    fn combine_formal<R: Relation<BaseExpr, ExtExpr>>(
+        &mut self,
+        relation: &R,
+        values: &[BaseExpr],
+    ) -> ExtExpr {
         const Z_SUFFIX: &str = "_z";
         const ALPHA_SUFFIX: &str = "_alpha";
         let z = ExtExpr::Param(relation.get_name().to_owned() + Z_SUFFIX);
-        assert!(
-            relation.get_size() >= values.len(),
-            "Not enough alpha powers to combine values"
-        );
+        if relation.get_size() < values.len() {
+            self.structural_errors.push(format!(
+                "relation `{}` has size {} but received {} values",
+                relation.get_name(),
+                relation.get_size(),
+                values.len()
+            ));
+        }
         let alpha_powers = (0..relation.get_size()).map(|i| {
             ExtExpr::Param(relation.get_name().to_owned() + ALPHA_SUFFIX + &i.to_string())
         });
@@ -149,8 +161,8 @@ impl EvalAtRow for AuditEvaluator {
             source: format!("{}:add_to_relation", entry.relation().get_name()),
         });
 
-        let intermediate =
-            self.add_extension_intermediate(Self::combine_formal(entry.relation(), entry.values()));
+        let combined = self.combine_formal(entry.relation(), entry.values());
+        let intermediate = self.add_extension_intermediate(combined);
         let frac = Fraction::new(entry.multiplicity().clone(), intermediate);
         self.write_logup_frac(frac);
     }
@@ -195,7 +207,11 @@ impl EvalAtRow for AuditEvaluator {
     }
 
     fn finalize_logup_batched(&mut self, batch_size: usize) {
-        assert!(batch_size > 0, "Batch size must be positive");
+        if batch_size == 0 {
+            self.structural_errors
+                .push("finalize_logup_batched called with batch_size 0".into());
+            return;
+        }
         // Components with no relation entries may still call finalize. Treat that as
         // a no-op rather than panicking (Stwo's ExprEvaluator panics; AuditEvaluator
         // is an assurance tool and should fail closed without crashing the host).
@@ -204,7 +220,11 @@ impl EvalAtRow for AuditEvaluator {
             self.logup_finalized = true;
             return;
         }
-        assert!(!self.logup.is_finalized, "LogupAtRow was already finalized");
+        if self.logup.is_finalized {
+            self.structural_errors
+                .push("LogupAtRow was already finalized".into());
+            return;
+        }
 
         let mut batched: Vec<Fraction<Self::EF, Self::EF>> = self
             .logup
@@ -213,9 +233,11 @@ impl EvalAtRow for AuditEvaluator {
             .map(|chunk| chunk.iter().cloned().sum())
             .collect();
 
-        let last_frac = batched
-            .pop()
-            .expect("non-empty fracs must yield at least one batched fraction");
+        let Some(last_frac) = batched.pop() else {
+            self.structural_errors
+                .push("non-empty fracs produced no batched fractions".into());
+            return;
+        };
         let mut prev_col_cumsum = <Self::EF as num_traits::Zero>::zero();
 
         for cur_frac in batched {

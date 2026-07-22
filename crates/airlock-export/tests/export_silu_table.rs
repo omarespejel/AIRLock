@@ -227,3 +227,26 @@ fn exported_column_ids_drop_offset_suffix() {
         airlock_ir::BaseExpr::Column { id, offset: 0 } if id == "table_code"
     ));
 }
+
+#[test]
+fn exported_interaction_columns_use_interaction_kind() {
+    let air = SiluTableAir;
+    let manifest = export_component(&air, annotations(false)).expect("export");
+    let interaction_cols: Vec<_> = manifest.components[0]
+        .columns
+        .iter()
+        .filter(|c| c.id.starts_with("trace_2_"))
+        .collect();
+    assert!(
+        !interaction_cols.is_empty(),
+        "expected LogUp interaction columns from finalize"
+    );
+    for col in interaction_cols {
+        assert_eq!(col.kind, airlock_ir::ColumnKind::Interaction);
+        assert_eq!(col.interaction, Some(2));
+        assert_eq!(
+            col.commitment_phase,
+            airlock_ir::CommitmentPhase::Phase2Interaction
+        );
+    }
+}

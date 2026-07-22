@@ -6,7 +6,9 @@ use airlock_ir::{
     AuditManifest, BaseExpr, ColumnDecl, ColumnKind, CommitmentPhase, ComponentManifest,
     ConstraintDecl, ExtExpr, RelationEntry, RowSupport, SemanticType,
 };
-use stwo_constraint_framework::{FrameworkEval, InfoEvaluator, PREPROCESSED_TRACE_IDX};
+use stwo_constraint_framework::{
+    FrameworkEval, InfoEvaluator, INTERACTION_TRACE_IDX, PREPROCESSED_TRACE_IDX,
+};
 
 use crate::annotations::ExportAnnotations;
 use crate::convert::{convert_base, convert_ext, multiplicity_as_base, ConvertError};
@@ -38,6 +40,12 @@ pub fn export_component<E: FrameworkEval>(
     let auditor = eval.evaluate(AuditEvaluator::new());
     let info = eval.evaluate(InfoEvaluator::empty());
 
+    if !auditor.structural_errors.is_empty() {
+        return Err(ExportError::Faithfulness(format!(
+            "AuditEvaluator structural errors: {}",
+            auditor.structural_errors.join("; ")
+        )));
+    }
     if auditor.constraints.len() != info.n_constraints {
         return Err(ExportError::Faithfulness(format!(
             "constraint count mismatch: audit={} info={}",
@@ -240,15 +248,41 @@ fn push_or_merge_column(
         .get(id)
         .cloned()
         .unwrap_or(SemanticType::Unknown);
+    let (interaction, kind, commitment_phase) = classify_trace_column(id, annotations);
     columns.push(ColumnDecl {
         id: id.to_string(),
         name: id.to_string(),
-        interaction: None,
-        commitment_phase: annotations.witness_phase,
+        interaction,
+        commitment_phase,
         offsets: vec![offset],
-        kind: ColumnKind::Witness,
+        kind,
         semantic_type: semantic,
         declared_range: None,
         declared_support: None,
     });
+}
+
+/// Map Stwo `trace_{interaction}_column_{j}` ids onto AuditIR kind/phase.
+fn classify_trace_column(
+    id: &str,
+    annotations: &ExportAnnotations,
+) -> (Option<u32>, ColumnKind, CommitmentPhase) {
+    let interaction = id
+        .strip_prefix("trace_")
+        .and_then(|rest| rest.split("_column_").next())
+        .and_then(|idx| idx.parse::<u32>().ok());
+    match interaction {
+        Some(idx) if idx == PREPROCESSED_TRACE_IDX as u32 => (
+            Some(idx),
+            ColumnKind::Preprocessed,
+            CommitmentPhase::Phase0Public,
+        ),
+        Some(idx) if idx == INTERACTION_TRACE_IDX as u32 => (
+            Some(idx),
+            ColumnKind::Interaction,
+            CommitmentPhase::Phase2Interaction,
+        ),
+        Some(idx) => (Some(idx), ColumnKind::Witness, annotations.witness_phase),
+        None => (None, ColumnKind::Witness, annotations.witness_phase),
+    }
 }

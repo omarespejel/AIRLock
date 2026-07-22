@@ -27,6 +27,9 @@ See [docs/SPEC.md](docs/SPEC.md) and [docs/coverage.yaml](docs/coverage.yaml).
 ```bash
 scripts/verify-local.sh
 
+# Stwo exporter (requires sibling checkout at ../stwo; see docs/STWO_PATCH.md)
+cargo +nightly-2026-01-15 test -p airlock-export --locked
+
 cargo +nightly-2026-01-15 run -p airlock-cli -- air \
   --manifest fixtures/seeded/q8_padded_table_vulnerable.json
 # expects StaticFail (exit 1)

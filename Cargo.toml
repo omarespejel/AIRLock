@@ -10,8 +10,10 @@ default-members = [
     "crates/airlock-ir",
     "crates/airlock-lint",
     "crates/airlock-cli",
-    "crates/airlock-export",
 ]
+# `airlock-export` stays a workspace member but is not a default member: it
+# requires a sibling Stwo checkout at `../stwo` (see docs/STWO_PATCH.md).
+# Build/test it explicitly: `cargo test -p airlock-export --locked`
 
 [workspace.package]
 version = "0.1.0"
