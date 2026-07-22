@@ -230,7 +230,7 @@ fn coverage_manifest_fail_closed_on_missing_surface() {
 fn gate_report_never_collapses_lanes_to_sound_true() {
     let component = q8_component(true);
     let findings = lint_component(&component, &LintOptions::default());
-    let report = airlock_ir::GateReport::from_static_findings("0.1.0", findings);
+    let report = airlock_ir::GateReport::from_static_findings("0.1.0", "0.1.0", findings);
     assert_eq!(report.overall_release_status, "BLOCKED");
     assert!(
         report

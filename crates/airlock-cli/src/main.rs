@@ -108,7 +108,11 @@ fn cmd_air(
         require_semantic_annotations: require_annotations,
     };
     let findings = lint_manifest(&audit, &options);
-    let gate = GateReport::from_static_findings(AIRLOCK_VERSION, findings.clone());
+    let gate = GateReport::from_static_findings(
+        AIRLOCK_VERSION,
+        audit.schema_version.clone(),
+        findings.clone(),
+    );
 
     if let Some(path) = report_path {
         let json = serde_json::to_string_pretty(&gate)?;

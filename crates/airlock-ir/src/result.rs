@@ -138,8 +138,12 @@ pub struct GateReport {
 
 impl GateReport {
     /// Build a blocked report from findings.
+    ///
+    /// `ir_schema` must be the analyzed manifest's `schema_version`, not necessarily
+    /// the tool's current `IR_SCHEMA_VERSION`.
     pub fn from_static_findings(
         airlock_version: impl Into<String>,
+        ir_schema: impl Into<String>,
         findings: Vec<Finding>,
     ) -> Self {
         let blocked = findings.iter().any(|f| f.severity >= Severity::High);
@@ -155,7 +159,7 @@ impl GateReport {
             source_commit: None,
             stwo_commit: None,
             airlock_version: airlock_version.into(),
-            ir_schema: crate::IR_SCHEMA_VERSION.to_string(),
+            ir_schema: ir_schema.into(),
             findings,
             air_verdict,
             lanes: vec![

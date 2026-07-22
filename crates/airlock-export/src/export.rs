@@ -173,14 +173,29 @@ fn build_component<E: FrameworkEval>(
     }
 
     let mut preprocessed = Vec::new();
-    for (id, attachment) in &annotations.preprocessed {
+    let mut emitted_prep = HashSet::new();
+    for prep in &auditor.preprocessed_columns {
+        if !emitted_prep.insert(prep.id.clone()) {
+            continue;
+        }
+        let attachment = annotations.preprocessed.get(&prep.id).ok_or_else(|| {
+            ExportError::MissingAnnotation(format!("preprocessed column `{}`", prep.id))
+        })?;
         if attachment.values.is_none() && attachment.generator_id.is_none() {
             return Err(ExportError::MissingAnnotation(format!(
-                "preprocessed column `{id}` lacks values or generator_id"
+                "preprocessed column `{}` lacks values or generator_id",
+                prep.id
             )));
         }
-        validate_preprocessed_attachment(id, attachment)?;
-        preprocessed.push(attachment.to_ir(id.clone()));
+        validate_preprocessed_attachment(&prep.id, attachment)?;
+        preprocessed.push(attachment.to_ir(prep.id.clone()));
+    }
+    for id in annotations.preprocessed.keys() {
+        if !emitted_prep.contains(id) {
+            return Err(ExportError::MissingAnnotation(format!(
+                "preprocessed annotation `{id}` was not observed by AuditEvaluator"
+            )));
+        }
     }
 
     Ok(ComponentManifest {
