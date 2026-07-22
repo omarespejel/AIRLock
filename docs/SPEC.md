@@ -41,7 +41,10 @@ An export is not faithful enough for `COVERED` unless it retains:
 `ExprEvaluator` alone is insufficient: it turns preprocessed columns into
 `Param(id)` and compresses LogUp tuples. V0 fixtures hand-author AuditIR;
 `airlock-export` adds `AuditEvaluator` that records uncompressed relations and
-merges semantic annotations (preprocessed values, row support, roles).
+merges semantic annotations (preprocessed values, row support, roles). Export
+rewrites known preprocessed `Param`s to `Column` ids, requires relation
+annotations, and retains full `SecureCol` / QM31 `Const` limbs (AuditIR schema
+`0.2.0`).
 
 Requires sibling Stwo `../stwo` at pin `41ba5a32…` plus RelationEntry accessors
 documented in `docs/STWO_PATCH.md`.

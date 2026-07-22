@@ -4,4 +4,4 @@
 pub const IR_SCHEMA_ID: &str = "airlock.audit-ir";
 
 /// Schema version. Bump on breaking IR changes.
-pub const IR_SCHEMA_VERSION: &str = "0.1.0";
+pub const IR_SCHEMA_VERSION: &str = "0.2.0";

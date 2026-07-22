@@ -195,8 +195,16 @@ impl EvalAtRow for AuditEvaluator {
     }
 
     fn finalize_logup_batched(&mut self, batch_size: usize) {
-        assert!(!self.logup.is_finalized, "LogupAtRow was already finalized");
         assert!(batch_size > 0, "Batch size must be positive");
+        // Components with no relation entries may still call finalize. Treat that as
+        // a no-op rather than panicking (Stwo's ExprEvaluator panics; AuditEvaluator
+        // is an assurance tool and should fail closed without crashing the host).
+        if self.logup.fracs.is_empty() {
+            self.logup.is_finalized = true;
+            self.logup_finalized = true;
+            return;
+        }
+        assert!(!self.logup.is_finalized, "LogupAtRow was already finalized");
 
         let mut batched: Vec<Fraction<Self::EF, Self::EF>> = self
             .logup
@@ -205,7 +213,9 @@ impl EvalAtRow for AuditEvaluator {
             .map(|chunk| chunk.iter().cloned().sum())
             .collect();
 
-        let last_frac = batched.pop().expect("No fractions to finalize");
+        let last_frac = batched
+            .pop()
+            .expect("non-empty fracs must yield at least one batched fraction");
         let mut prev_col_cumsum = <Self::EF as num_traits::Zero>::zero();
 
         for cur_frac in batched {

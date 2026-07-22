@@ -68,7 +68,17 @@ pub enum ExtExpr {
         /// Parameter name.
         name: String,
     },
-    /// Lift a base expression.
+    /// Concrete QM31 constant as four M31 limbs `[a0, a1, a2, a3]`.
+    Const {
+        /// Limb representatives in `[0, p)`.
+        limbs: [u32; 4],
+    },
+    /// Unreduced secure column from four base expressions (Stwo `SecureCol`).
+    SecureCol {
+        /// Four base-field coordinate expressions.
+        parts: [BaseExpr; 4],
+    },
+    /// Lift a base expression (equivalent to `SecureCol([inner, 0, 0, 0])` semantics).
     FromBase {
         /// Base expression.
         inner: BaseExpr,

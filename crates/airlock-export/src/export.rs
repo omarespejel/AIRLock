@@ -1,13 +1,15 @@
 //! Turn an evaluated [`AuditEvaluator`] into an AuditIR component.
 
+use std::collections::HashSet;
+
 use airlock_ir::{
-    AuditManifest, ColumnDecl, ColumnKind, CommitmentPhase, ComponentManifest, ConstraintDecl,
-    RelationEntry, RowSupport, SemanticType,
+    AuditManifest, BaseExpr, ColumnDecl, ColumnKind, CommitmentPhase, ComponentManifest,
+    ConstraintDecl, ExtExpr, RelationEntry, RowSupport, SemanticType,
 };
 use stwo_constraint_framework::{FrameworkEval, InfoEvaluator, PREPROCESSED_TRACE_IDX};
 
 use crate::annotations::ExportAnnotations;
-use crate::convert::{convert_base, convert_ext, multiplicity_as_base};
+use crate::convert::{convert_base, convert_ext, multiplicity_as_base, ConvertError};
 use crate::evaluator::AuditEvaluator;
 use crate::AIRLOCK_EXPORT_VERSION;
 
@@ -23,6 +25,9 @@ pub enum ExportError {
     /// Missing required semantic annotation.
     #[error("missing export annotation: {0}")]
     MissingAnnotation(String),
+    /// Lossy or malformed Stwo→AuditIR conversion.
+    #[error("export conversion failed: {0}")]
+    Conversion(#[from] ConvertError),
 }
 
 /// Export a `FrameworkEval` component into AuditIR, merging semantic annotations.
@@ -74,13 +79,27 @@ fn build_component<E: FrameworkEval>(
 ) -> Result<ComponentManifest, ExportError> {
     let log_size = eval.log_size();
     let domain_size = 1u64 << log_size;
+    let preprocessed_ids: HashSet<String> = auditor
+        .preprocessed_columns
+        .iter()
+        .map(|c| c.id.clone())
+        .collect();
 
     let mut columns: Vec<ColumnDecl> = Vec::new();
 
     for prep in &auditor.preprocessed_columns {
+        if columns.iter().any(|c| c.id == prep.id) {
+            continue;
+        }
         let attachment = annotations.preprocessed.get(&prep.id).ok_or_else(|| {
             ExportError::MissingAnnotation(format!("preprocessed column `{}`", prep.id))
         })?;
+        if attachment.values.is_none() && attachment.generator_id.is_none() {
+            return Err(ExportError::MissingAnnotation(format!(
+                "preprocessed column `{}` lacks values or generator_id",
+                prep.id
+            )));
+        }
         columns.push(ColumnDecl {
             id: prep.id.clone(),
             name: prep.id.clone(),
@@ -99,48 +118,55 @@ fn build_component<E: FrameworkEval>(
 
     for raw in &auditor.relations {
         for value in &raw.values {
-            push_column_from_expr(&mut columns, value, &annotations);
+            let ir = convert_base(value, &preprocessed_ids)?;
+            collect_columns_from_base(&mut columns, &ir, &annotations);
         }
-        let mult = multiplicity_as_base(&raw.multiplicity);
-        push_column_from_ir(&mut columns, &mult, &annotations);
+        let mult = multiplicity_as_base(&raw.multiplicity, &preprocessed_ids)?;
+        collect_columns_from_base(&mut columns, &mult, &annotations);
     }
 
-    let constraints = auditor
-        .constraints
-        .iter()
-        .enumerate()
-        .map(|(index, expr)| ConstraintDecl {
+    let mut constraints = Vec::with_capacity(auditor.constraints.len());
+    for (index, expr) in auditor.constraints.iter().enumerate() {
+        let expression = convert_ext(expr, &preprocessed_ids)?;
+        collect_columns_from_ext(&mut columns, &expression, &annotations);
+        constraints.push(ConstraintDecl {
             id: format!("constraint_{index}"),
-            expression: convert_ext(expr),
+            expression,
             row_support: RowSupport::All,
             source_location: Some(format!("{}::constraint_{index}", annotations.component_name)),
             semantic_claim: None,
-        })
-        .collect();
+        });
+    }
 
     let mut relations = Vec::new();
     for raw in &auditor.relations {
-        let ann = annotations
-            .relations
-            .get(&raw.relation_name)
-            .cloned()
-            .unwrap_or_default();
+        let ann = annotations.relations.get(&raw.relation_name).ok_or_else(|| {
+            ExportError::MissingAnnotation(format!("relation `{}`", raw.relation_name))
+        })?;
+        let mut tuple = Vec::with_capacity(raw.values.len());
+        for value in &raw.values {
+            tuple.push(convert_base(value, &preprocessed_ids)?);
+        }
         relations.push(RelationEntry {
             relation: raw.relation_name.clone(),
             role: ann.role,
-            tuple: raw.values.iter().map(convert_base).collect(),
-            multiplicity: multiplicity_as_base(&raw.multiplicity),
-            row_support: ann.row_support,
+            tuple,
+            multiplicity: multiplicity_as_base(&raw.multiplicity, &preprocessed_ids)?,
+            row_support: ann.row_support.clone(),
             challenge_phase: ann.challenge_phase,
             source_location: Some(raw.source.clone()),
         });
     }
 
-    let preprocessed = annotations
-        .preprocessed
-        .iter()
-        .map(|(id, attachment)| attachment.to_ir(id.clone()))
-        .collect();
+    let mut preprocessed = Vec::new();
+    for (id, attachment) in &annotations.preprocessed {
+        if attachment.values.is_none() && attachment.generator_id.is_none() {
+            return Err(ExportError::MissingAnnotation(format!(
+                "preprocessed column `{id}` lacks values or generator_id"
+            )));
+        }
+        preprocessed.push(attachment.to_ir(id.clone()));
+    }
 
     Ok(ComponentManifest {
         name: annotations.component_name,
@@ -156,23 +182,57 @@ fn build_component<E: FrameworkEval>(
     })
 }
 
-fn push_column_from_expr(
+fn collect_columns_from_base(
     columns: &mut Vec<ColumnDecl>,
-    expr: &stwo_constraint_framework::expr::BaseExpr,
+    expr: &BaseExpr,
     annotations: &ExportAnnotations,
 ) {
-    push_column_from_ir(columns, &convert_base(expr), annotations);
+    match expr {
+        BaseExpr::Column { id, offset } => {
+            push_or_merge_column(columns, id, *offset, annotations);
+        }
+        BaseExpr::Param { .. } | BaseExpr::Const { .. } => {}
+        BaseExpr::Add { lhs, rhs } | BaseExpr::Mul { lhs, rhs } => {
+            collect_columns_from_base(columns, lhs, annotations);
+            collect_columns_from_base(columns, rhs, annotations);
+        }
+        BaseExpr::Neg { inner } | BaseExpr::Inv { inner } => {
+            collect_columns_from_base(columns, inner, annotations);
+        }
+    }
 }
 
-fn push_column_from_ir(
+fn collect_columns_from_ext(
     columns: &mut Vec<ColumnDecl>,
-    expr: &airlock_ir::BaseExpr,
+    expr: &ExtExpr,
     annotations: &ExportAnnotations,
 ) {
-    let airlock_ir::BaseExpr::Column { id, offset } = expr else {
-        return;
-    };
-    if columns.iter().any(|c| c.id == *id) {
+    match expr {
+        ExtExpr::Param { .. } | ExtExpr::Const { .. } => {}
+        ExtExpr::FromBase { inner } => collect_columns_from_base(columns, inner, annotations),
+        ExtExpr::SecureCol { parts } => {
+            for part in parts {
+                collect_columns_from_base(columns, part, annotations);
+            }
+        }
+        ExtExpr::Add { lhs, rhs } | ExtExpr::Mul { lhs, rhs } => {
+            collect_columns_from_ext(columns, lhs, annotations);
+            collect_columns_from_ext(columns, rhs, annotations);
+        }
+        ExtExpr::Neg { inner } => collect_columns_from_ext(columns, inner, annotations),
+    }
+}
+
+fn push_or_merge_column(
+    columns: &mut Vec<ColumnDecl>,
+    id: &str,
+    offset: i32,
+    annotations: &ExportAnnotations,
+) {
+    if let Some(existing) = columns.iter_mut().find(|c| c.id == id) {
+        if !existing.offsets.contains(&offset) {
+            existing.offsets.push(offset);
+        }
         return;
     }
     let semantic = annotations
@@ -181,11 +241,11 @@ fn push_column_from_ir(
         .cloned()
         .unwrap_or(SemanticType::Unknown);
     columns.push(ColumnDecl {
-        id: id.clone(),
-        name: id.clone(),
+        id: id.to_string(),
+        name: id.to_string(),
         interaction: None,
         commitment_phase: annotations.witness_phase,
-        offsets: vec![*offset],
+        offsets: vec![offset],
         kind: ColumnKind::Witness,
         semantic_type: semantic,
         declared_range: None,

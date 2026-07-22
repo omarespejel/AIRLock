@@ -78,11 +78,10 @@ fn semantic_support_for_table_relation<'a>(
     }
 
     for expr in &relation.tuple {
-        let id = match expr {
-            BaseExpr::Column { id, .. } | BaseExpr::Param { name: id } => id.as_str(),
-            _ => continue,
+        let BaseExpr::Column { id, .. } = expr else {
+            continue;
         };
-        if let Some(column) = prep.get(id) {
+        if let Some(column) = prep.get(id.as_str()) {
             return Some(SemanticSupport {
                 semantic_length: column.semantic_length,
                 physical_length: column.physical_length.max(component.domain_size),
@@ -221,8 +220,10 @@ pub fn lint_lookup_functionality(component: &ComponentManifest) -> Vec<Finding> 
 }
 
 fn column_id(expr: &BaseExpr) -> Option<&str> {
+    // Preprocessed exports use Column ids. Do not treat formal Params as columns:
+    // a Param name that collides with a preprocessed id must not resolve as that column.
     match expr {
-        BaseExpr::Column { id, .. } | BaseExpr::Param { name: id } => Some(id.as_str()),
+        BaseExpr::Column { id, .. } => Some(id.as_str()),
         _ => None,
     }
 }

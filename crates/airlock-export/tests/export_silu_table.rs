@@ -8,7 +8,6 @@ use airlock_ir::{
     CommitmentPhase, FindingCode, RelationRole, RowSupport, SemanticContract, SemanticType,
 };
 use airlock_lint::{lint_manifest, LintOptions};
-use num_traits::One;
 use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
 use stwo_constraint_framework::{relation, EvalAtRow, FrameworkEval, RelationEntry};
 
@@ -106,7 +105,7 @@ fn annotations(vulnerable: bool) -> ExportAnnotations {
     );
     let mut column_semantics = indexmap::IndexMap::new();
     column_semantics.insert(
-        "trace_1_column_0_offset_0".into(),
+        "trace_1_column_0".into(),
         SemanticType::TableMultiplicity,
     );
 
@@ -183,4 +182,48 @@ fn export_requires_preprocessed_attachments() {
     let err = export_component(&air, ann).expect_err("must require attachments");
     let msg = err.to_string();
     assert!(msg.contains("preprocessed"), "{msg}");
+}
+
+#[test]
+fn export_requires_relation_annotations() {
+    let air = SiluTableAir;
+    let mut ann = annotations(false);
+    ann.relations.clear();
+    let err = export_component(&air, ann).expect_err("must require relation annotations");
+    let msg = err.to_string();
+    assert!(msg.contains("relation"), "{msg}");
+}
+
+#[test]
+fn export_requires_preprocessed_values_or_generator() {
+    let air = SiluTableAir;
+    let mut ann = annotations(false);
+    for attachment in ann.preprocessed.values_mut() {
+        attachment.values = None;
+        attachment.generator_id = None;
+    }
+    let err = export_component(&air, ann).expect_err("must require values or generator");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("values or generator_id"),
+        "{msg}"
+    );
+}
+
+#[test]
+fn exported_column_ids_drop_offset_suffix() {
+    let air = SiluTableAir;
+    let manifest = export_component(&air, annotations(false)).expect("export");
+    let ids: Vec<_> = manifest.components[0]
+        .columns
+        .iter()
+        .map(|c| c.id.as_str())
+        .collect();
+    assert!(ids.contains(&"table_code"));
+    assert!(ids.contains(&"trace_1_column_0"));
+    assert!(!ids.iter().any(|id| id.contains("_offset_")));
+    assert!(matches!(
+        &manifest.components[0].relations[0].tuple[0],
+        airlock_ir::BaseExpr::Column { id, offset: 0 } if id == "table_code"
+    ));
 }
