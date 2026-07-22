@@ -78,10 +78,11 @@ fn semantic_support_for_table_relation<'a>(
     }
 
     for expr in &relation.tuple {
-        let BaseExpr::Column { id, .. } = expr else {
-            continue;
+        let id = match expr {
+            BaseExpr::Column { id, .. } | BaseExpr::Param { name: id } => id.as_str(),
+            _ => continue,
         };
-        if let Some(column) = prep.get(id.as_str()) {
+        if let Some(column) = prep.get(id) {
             return Some(SemanticSupport {
                 semantic_length: column.semantic_length,
                 physical_length: column.physical_length.max(component.domain_size),
@@ -221,7 +222,7 @@ pub fn lint_lookup_functionality(component: &ComponentManifest) -> Vec<Finding> 
 
 fn column_id(expr: &BaseExpr) -> Option<&str> {
     match expr {
-        BaseExpr::Column { id, .. } => Some(id.as_str()),
+        BaseExpr::Column { id, .. } | BaseExpr::Param { name: id } => Some(id.as_str()),
         _ => None,
     }
 }

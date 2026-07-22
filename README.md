@@ -17,7 +17,7 @@ or that a green AIRLock report establishes whole-system STARK security.
 | AuditIR schema (`airlock-ir`) | landed |
 | Static gate (`airlock-lint`) | Q8 support/functionality + encoder bound + LogUp finalize |
 | CLI (`airlock`) | `air`, `coverage`, `schema` |
-| Stwo `AuditEvaluator` exporter | not landed (fixtures are hand-authored) |
+| Stwo `AuditEvaluator` exporter | landed (`airlock-export`); needs RelationEntry accessors — see `docs/STWO_PATCH.md` |
 | cvc5 / Lean / phase injection | later PRs |
 
 See [docs/SPEC.md](docs/SPEC.md) and [docs/coverage.yaml](docs/coverage.yaml).

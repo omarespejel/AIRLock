@@ -4,11 +4,13 @@ members = [
     "crates/airlock-ir",
     "crates/airlock-lint",
     "crates/airlock-cli",
+    "crates/airlock-export",
 ]
 default-members = [
     "crates/airlock-ir",
     "crates/airlock-lint",
     "crates/airlock-cli",
+    "crates/airlock-export",
 ]
 
 [workspace.package]
@@ -21,15 +23,20 @@ rust-version = "1.94"
 [workspace.dependencies]
 airlock-ir = { path = "crates/airlock-ir" }
 airlock-lint = { path = "crates/airlock-lint" }
+airlock-export = { path = "crates/airlock-export" }
 anyhow = "1.0"
 blake3 = "1.5"
 clap = { version = "4.5", features = ["derive"] }
 indexmap = { version = "2.7", features = ["serde"] }
+num-traits = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
 sha2 = "0.10"
 thiserror = "2.0"
+# Sibling Stwo checkout pinned to SparseProve real-PCS commit (path relative to repo root).
+stwo = { path = "../stwo/crates/stwo", version = "2.2.0", default-features = false, features = ["std", "prover"] }
+stwo-constraint-framework = { path = "../stwo/crates/constraint-framework", version = "2.2.0", features = ["std", "prover"] }
 
 [profile.release]
 lto = "thin"

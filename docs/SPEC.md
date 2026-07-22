@@ -39,8 +39,12 @@ An export is not faithful enough for `COVERED` unless it retains:
 - semantic annotations for columns on covered surfaces.
 
 `ExprEvaluator` alone is insufficient: it turns preprocessed columns into
-`Param(id)` and compresses LogUp tuples. V0 fixtures hand-author AuditIR until
-an `AuditEvaluator` lands in/near Stwo.
+`Param(id)` and compresses LogUp tuples. V0 fixtures hand-author AuditIR;
+`airlock-export` adds `AuditEvaluator` that records uncompressed relations and
+merges semantic annotations (preprocessed values, row support, roles).
+
+Requires sibling Stwo `../stwo` at pin `41ba5a32…` plus RelationEntry accessors
+documented in `docs/STWO_PATCH.md`.
 
 ## Static findings (v0)
 
