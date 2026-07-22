@@ -197,6 +197,9 @@ fn export_rejects_preprocessed_length_mismatch() {
         err
     );
 }
+
+#[test]
+fn export_requires_relation_annotations() {
     let air = SiluTableAir;
     let mut ann = annotations(false);
     ann.relations.clear();
