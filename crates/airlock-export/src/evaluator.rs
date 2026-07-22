@@ -96,9 +96,9 @@ impl AuditEvaluator {
         const Z_SUFFIX: &str = "_z";
         const ALPHA_SUFFIX: &str = "_alpha";
         let z = ExtExpr::Param(relation.get_name().to_owned() + Z_SUFFIX);
-        if relation.get_size() < values.len() {
+        if relation.get_size() != values.len() {
             self.structural_errors.push(format!(
-                "relation `{}` has size {} but received {} values",
+                "relation `{}` arity mismatch: declared size {} but received {} values",
                 relation.get_name(),
                 relation.get_size(),
                 values.len()
@@ -154,6 +154,12 @@ impl EvalAtRow for AuditEvaluator {
         &mut self,
         entry: RelationEntry<'_, Self::F, Self::EF, R>,
     ) {
+        if self.logup_finalized {
+            self.structural_errors.push(format!(
+                "add_to_relation(`{}`) after LogUp was finalized",
+                entry.relation().get_name()
+            ));
+        }
         self.relations.push(RawRelationEntry {
             relation_name: entry.relation().get_name().to_string(),
             values: entry.values().to_vec(),

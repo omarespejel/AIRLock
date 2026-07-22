@@ -185,7 +185,18 @@ fn export_requires_preprocessed_attachments() {
 }
 
 #[test]
-fn export_requires_relation_annotations() {
+fn export_rejects_preprocessed_length_mismatch() {
+    let air = SiluTableAir;
+    let mut ann = annotations(false);
+    let attachment = ann.preprocessed.get_mut("table_code").unwrap();
+    attachment.physical_length = 8;
+    let err = export_component(&air, ann).expect_err("must reject length mismatch");
+    assert!(
+        err.to_string().contains("physical_length"),
+        "{}",
+        err
+    );
+}
     let air = SiluTableAir;
     let mut ann = annotations(false);
     ann.relations.clear();

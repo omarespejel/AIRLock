@@ -86,6 +86,11 @@ fn build_component<E: FrameworkEval>(
     annotations: ExportAnnotations,
 ) -> Result<ComponentManifest, ExportError> {
     let log_size = eval.log_size();
+    if log_size >= 64 {
+        return Err(ExportError::Faithfulness(format!(
+            "log_size {log_size} does not fit in u64 domain_size = 1 << log_size"
+        )));
+    }
     let domain_size = 1u64 << log_size;
     let preprocessed_ids: HashSet<String> = auditor
         .preprocessed_columns
@@ -108,6 +113,7 @@ fn build_component<E: FrameworkEval>(
                 prep.id
             )));
         }
+        validate_preprocessed_attachment(&prep.id, attachment)?;
         columns.push(ColumnDecl {
             id: prep.id.clone(),
             name: prep.id.clone(),
@@ -173,6 +179,7 @@ fn build_component<E: FrameworkEval>(
                 "preprocessed column `{id}` lacks values or generator_id"
             )));
         }
+        validate_preprocessed_attachment(id, attachment)?;
         preprocessed.push(attachment.to_ir(id.clone()));
     }
 
@@ -188,6 +195,28 @@ fn build_component<E: FrameworkEval>(
         contract: annotations.contract,
         logup_finalized: auditor.logup_finalized,
     })
+}
+
+fn validate_preprocessed_attachment(
+    id: &str,
+    attachment: &crate::annotations::PreprocessedAttachment,
+) -> Result<(), ExportError> {
+    if attachment.semantic_length > attachment.physical_length {
+        return Err(ExportError::MissingAnnotation(format!(
+            "preprocessed column `{id}` semantic_length {} exceeds physical_length {}",
+            attachment.semantic_length, attachment.physical_length
+        )));
+    }
+    if let Some(values) = &attachment.values
+        && values.len() as u64 != attachment.physical_length
+    {
+        return Err(ExportError::MissingAnnotation(format!(
+            "preprocessed column `{id}` values.len()={} != physical_length {}",
+            values.len(),
+            attachment.physical_length
+        )));
+    }
+    Ok(())
 }
 
 fn collect_columns_from_base(
