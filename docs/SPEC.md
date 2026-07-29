@@ -14,9 +14,9 @@ AIRLock is **not** a whole-system STARK soundness verifier.
 | --- | --- | --- |
 | AIR relation | `airlock air` | static gate over AuditIR |
 | Statement binding | separate | `OUT_OF_MODEL` |
-| Verifier boundary | `airlock-boundary`, `airlock-stwo` | contracts plus one pinned executable demo adapter |
+| Verifier boundary | `airlock-boundary`, `airlock-stwo` | contracts, one pinned executable demo adapter, and its replay records |
 | Protocol / FRI / FS | `airlock-boundary` | typed transcript contract/oracle only; executable transcript capture remains `UNINSTANTIATED` |
-| Evidence / provenance | `airlock-stwo` | process-contained replay and self-verifying bundle for the pinned demo target only |
+| Evidence / provenance | separate | `NOT_RUN`; replay bundles do not establish authorship or external provenance |
 
 ## Coverage statuses
 
@@ -158,21 +158,24 @@ ordered trace is content addressed. This is an evidence and
 ordering contract only. The executable adapter and any Fiat--Shamir security
 reduction remain separate work.
 
-## Isolated replay evidence
+## Isolated replay records
 
 `airlock-stwo-worker` accepts a bounded, content-addressed replay request and
-returns one validated differential replay. The parent runner hashes the exact
-worker executable, owns the deadline, drains bounded stdout and stderr, and
+returns one validated differential replay. The parent runner copies the worker
+into a private randomized directory, hashes the exact bytes it executes, owns
+the deadline, drains bounded stdout and stderr, and
 classifies timeout, process failure, oversized output, malformed output, and
 response mismatch separately. Only an honest acceptance or expected mutation
 rejection may satisfy `is_expected`; every process anomaly fails closed.
 
-The evidence writer publishes a new directory containing exactly
+The replay-bundle writer publishes a new directory containing exactly
 `request.json`, `report.json`, and `SHA256SUMS`. The verifier checks file
 inventory, size limits, canonical schemas, checksums, pinned source and target,
-request linkage, and every replay report. The runner is subprocess containment,
-not an OS sandbox. The bundle is deterministic and self-consistent, but it is
-not signed and therefore does not authenticate its producer.
+request linkage, and every replay report. The bundle belongs to the executable
+verifier-boundary lane; it is not a separate evidence-assurance result. The
+runner is subprocess containment, not an OS sandbox. The bundle is deterministic
+and self-consistent, but it is not signed and therefore does not authenticate
+its producer.
 
 ## Seeded defects
 

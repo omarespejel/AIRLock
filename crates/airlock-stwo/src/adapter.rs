@@ -522,7 +522,7 @@ impl From<VerificationError> for VerifierFailure {
     }
 }
 
-/// Adapter construction, replay, or evidence error.
+/// Adapter construction or replay error.
 #[derive(Debug, Error)]
 pub enum StwoBoundaryError {
     /// Honest proof generation failed.
@@ -543,8 +543,8 @@ pub enum StwoBoundaryError {
     /// Mutation could not be represented or applied.
     #[error(transparent)]
     Mutation(#[from] StwoMutationError),
-    /// Replay evidence is internally inconsistent or relabeled.
-    #[error("invalid Stwo replay evidence: {0}")]
+    /// Replay record is internally inconsistent or relabeled.
+    #[error("invalid Stwo replay record: {0}")]
     ReplayValidation(String),
 }
 

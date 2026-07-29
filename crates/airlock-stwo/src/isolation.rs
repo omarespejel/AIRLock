@@ -11,15 +11,16 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+use crate::temp::PrivateTempDir;
 use crate::{
     DifferentialReplay, ReplayRequest, ReplayRequestError, STWO_DEMO_TARGET, STWO_SOURCE_ID,
     replay_request_sha256,
 };
 
-/// Stable schema identifier for isolated replay evidence.
+/// Stable schema identifier for isolated replay record.
 pub const ISOLATED_REPLAY_SCHEMA: &str = "airlock.stwo-isolated-replay";
 
-/// Serialized isolated replay evidence version.
+/// Serialized isolated replay record version.
 pub const ISOLATED_REPLAY_VERSION: &str = "0.1.0";
 
 const MAX_REQUEST_BYTES: usize = 1 << 20;
@@ -79,13 +80,13 @@ pub enum InvalidOutputReason {
     ResponseMismatch,
 }
 
-/// Canonical process-contained replay evidence.
+/// Canonical process-contained replay record.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct IsolatedReplayEvidence {
-    /// Evidence schema identity.
+pub struct IsolatedReplayRecord {
+    /// Record schema identity.
     pub schema: String,
-    /// Evidence schema version.
+    /// Record schema version.
     pub schema_version: String,
     /// Fixed executable component identity.
     pub target: String,
@@ -112,7 +113,7 @@ pub struct IsolatedReplayEvidence {
     pub stderr: StreamDigest,
 }
 
-impl IsolatedReplayEvidence {
+impl IsolatedReplayRecord {
     /// Whether execution completed with the expected verdict and quiet stderr.
     pub fn is_expected(&self) -> bool {
         matches!(self.termination, ProcessTermination::Completed)
@@ -123,12 +124,12 @@ impl IsolatedReplayEvidence {
                 .is_some_and(|replay| replay.verdict.is_expected())
     }
 
-    /// Validate this report against the exact replay request.
+    /// Validate this record against the exact replay request.
     pub fn validate(&self, request: &ReplayRequest) -> Result<(), IsolatedReplayError> {
         request.validate()?;
         if self.schema != ISOLATED_REPLAY_SCHEMA || self.schema_version != ISOLATED_REPLAY_VERSION {
-            return Err(IsolatedReplayError::InvalidEvidence(
-                "unexpected isolated replay evidence schema".to_owned(),
+            return Err(IsolatedReplayError::InvalidRecord(
+                "unexpected isolated replay record schema".to_owned(),
             ));
         }
         if self.target != request.target
@@ -137,12 +138,12 @@ impl IsolatedReplayEvidence {
             || self.upstream_commit != STWO_SOURCE_ID
             || self.case_id != request.case_id()
         {
-            return Err(IsolatedReplayError::InvalidEvidence(
-                "isolated replay provenance does not match its request".to_owned(),
+            return Err(IsolatedReplayError::InvalidRecord(
+                "isolated replay source and target does not match its request".to_owned(),
             ));
         }
         if self.request_sha256 != replay_request_sha256(request)? {
-            return Err(IsolatedReplayError::InvalidEvidence(
+            return Err(IsolatedReplayError::InvalidRecord(
                 "isolated replay request digest mismatch".to_owned(),
             ));
         }
@@ -151,7 +152,7 @@ impl IsolatedReplayEvidence {
         validate_stream_digest(&self.stdout, "stdout")?;
         validate_stream_digest(&self.stderr, "stderr")?;
         if self.timeout_ms == 0 || self.timeout_ms > MAX_TIMEOUT.as_millis() as u64 {
-            return Err(IsolatedReplayError::InvalidEvidence(
+            return Err(IsolatedReplayError::InvalidRecord(
                 "isolated replay timeout is outside the supported range".to_owned(),
             ));
         }
@@ -163,19 +164,19 @@ impl IsolatedReplayEvidence {
                     || self.stdout.byte_len != canonical_stdout.len() as u64
                     || self.stdout.sha256 != sha256_bytes(&canonical_stdout)
                 {
-                    return Err(IsolatedReplayError::InvalidEvidence(
+                    return Err(IsolatedReplayError::InvalidRecord(
                         "completed worker stdout does not match its canonical replay".to_owned(),
                     ));
                 }
             }
             (ProcessTermination::Completed, None) => {
-                return Err(IsolatedReplayError::InvalidEvidence(
-                    "completed worker evidence has no replay".to_owned(),
+                return Err(IsolatedReplayError::InvalidRecord(
+                    "completed worker record has no replay".to_owned(),
                 ));
             }
             (_, Some(_)) => {
-                return Err(IsolatedReplayError::InvalidEvidence(
-                    "non-completed worker evidence unexpectedly contains a replay".to_owned(),
+                return Err(IsolatedReplayError::InvalidRecord(
+                    "non-completed worker record unexpectedly contains a replay".to_owned(),
                 ));
             }
             (_, None) => {}
@@ -193,7 +194,7 @@ pub fn run_isolated_replay(
     worker_args: &[String],
     request: &ReplayRequest,
     timeout: Duration,
-) -> Result<IsolatedReplayEvidence, IsolatedReplayError> {
+) -> Result<IsolatedReplayRecord, IsolatedReplayError> {
     request.validate()?;
     if timeout.is_zero() || timeout > MAX_TIMEOUT {
         return Err(IsolatedReplayError::InvalidTimeout(timeout));
@@ -204,9 +205,21 @@ pub fn run_isolated_replay(
     if request_bytes.len() > MAX_REQUEST_BYTES {
         return Err(IsolatedReplayError::RequestTooLarge(request_bytes.len()));
     }
-    let worker_sha256 = sha256_file(program)?;
+    let worker_dir = PrivateTempDir::create_in(&std::env::temp_dir(), ".airlock-worker-")
+        .map_err(|error| IsolatedReplayError::WorkerIdentity(error.to_string()))?;
+    let copied_worker = worker_dir.path().join(format!(
+        "airlock-replay-worker{}",
+        std::env::consts::EXE_SUFFIX
+    ));
+    std::fs::copy(program, &copied_worker).map_err(|error| {
+        IsolatedReplayError::WorkerIdentity(format!(
+            "copy {} into private execution directory: {error}",
+            program.display()
+        ))
+    })?;
+    let worker_sha256 = sha256_file(&copied_worker)?;
 
-    let mut child = Command::new(program)
+    let mut child = Command::new(&copied_worker)
         .args(worker_args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -314,7 +327,7 @@ pub fn run_isolated_replay(
         None
     };
 
-    let evidence = IsolatedReplayEvidence {
+    let record = IsolatedReplayRecord {
         schema: ISOLATED_REPLAY_SCHEMA.to_owned(),
         schema_version: ISOLATED_REPLAY_VERSION.to_owned(),
         target: request.target.clone(),
@@ -329,8 +342,8 @@ pub fn run_isolated_replay(
         stdout: stdout.digest(),
         stderr: stderr.digest(),
     };
-    evidence.validate(request)?;
-    Ok(evidence)
+    record.validate(request)?;
+    Ok(record)
 }
 
 fn validate_replay_response(
@@ -339,13 +352,13 @@ fn validate_replay_response(
 ) -> Result<(), IsolatedReplayError> {
     request
         .validate_replay(replay)
-        .map_err(|error| IsolatedReplayError::InvalidEvidence(error.to_string()))?;
+        .map_err(|error| IsolatedReplayError::InvalidRecord(error.to_string()))?;
     if replay.contract.target != request.target
         || replay.contract.upstream_commit != request.upstream_commit
         || replay.raw_pcs.observation.case_id != request.case_id()
         || replay.framework.observation.case_id != request.case_id()
     {
-        return Err(IsolatedReplayError::InvalidEvidence(
+        return Err(IsolatedReplayError::InvalidRecord(
             "worker response does not match its request".to_owned(),
         ));
     }
@@ -423,12 +436,12 @@ fn validate_stream_digest(
 ) -> Result<(), IsolatedReplayError> {
     validate_hex_digest(&stream.sha256, label)?;
     if stream.truncated != (stream.byte_len > MAX_CAPTURE_BYTES as u64) {
-        return Err(IsolatedReplayError::InvalidEvidence(format!(
+        return Err(IsolatedReplayError::InvalidRecord(format!(
             "{label} truncation flag does not match its byte length"
         )));
     }
     if stream.byte_len == 0 && stream.sha256 != sha256_bytes(&[]) {
-        return Err(IsolatedReplayError::InvalidEvidence(format!(
+        return Err(IsolatedReplayError::InvalidRecord(format!(
             "empty {label} stream has the wrong SHA-256"
         )));
     }
@@ -445,7 +458,7 @@ fn validate_hex_digest(digest: &str, label: &'static str) -> Result<(), Isolated
             .bytes()
             .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
     {
-        return Err(IsolatedReplayError::InvalidEvidence(format!(
+        return Err(IsolatedReplayError::InvalidRecord(format!(
             "{label} SHA-256 is not canonical lowercase hex"
         )));
     }
@@ -463,7 +476,7 @@ fn validate_worker_args(args: &[String]) -> Result<(), IsolatedReplayError> {
     Ok(())
 }
 
-/// Isolation, worker, or evidence construction error.
+/// Isolation, worker, or record construction error.
 #[derive(Debug, Error)]
 pub enum IsolatedReplayError {
     /// Request is stale or malformed.
@@ -499,10 +512,10 @@ pub enum IsolatedReplayError {
     /// Child stream read failed.
     #[error("isolated replay stream read failed: {0}")]
     StreamRead(#[from] std::io::Error),
-    /// Request or evidence serialization failed.
+    /// Request or record serialization failed.
     #[error("isolated replay serialization failed: {0}")]
     Serialization(String),
-    /// Evidence is internally inconsistent or relabeled.
-    #[error("invalid isolated replay evidence: {0}")]
-    InvalidEvidence(String),
+    /// Replay record is internally inconsistent or relabeled.
+    #[error("invalid isolated replay record: {0}")]
+    InvalidRecord(String),
 }

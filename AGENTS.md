@@ -31,7 +31,8 @@ claim.
   transcript result vocabularies remain separate assurance lanes.
 - `crates/airlock-stwo`: pinned executable demo adapter, OODS-sample
   mutations, raw-PCS/framework differential replay, subprocess containment,
-  and deterministic evidence-bundle verification.
+  and deterministic replay-bundle verification. Replay bundles remain part of
+  this verifier-boundary adapter; they do not mark evidence/provenance covered.
 - `crates/airlock-cli`: lane-specific commands and fail-closed exit behavior.
 - `fixtures/seeded`: synthetic vulnerable/fixed regression pairs.
 - `docs/SPEC.md`: current technical scope and non-goals.

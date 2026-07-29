@@ -6,23 +6,24 @@
 //! It does not establish Stwo, FRI, Fiat--Shamir, or application soundness.
 
 mod adapter;
-mod evidence;
 mod fixture;
 mod isolation;
 mod mutation;
+mod replay_bundle;
 mod request;
+mod temp;
 
 pub use adapter::{
     DifferentialReplay, DifferentialVerdict, LayerReplay, StwoBoundaryAdapter, StwoBoundaryError,
 };
-pub use evidence::{
-    EvidenceBundleError, EvidenceBundleFiles, verify_evidence_bundle, write_evidence_bundle,
-};
 pub use fixture::{DemoComponent, DemoProof, build_demo_fixture};
 pub use isolation::{
-    IsolatedReplayError, IsolatedReplayEvidence, ProcessTermination, run_isolated_replay,
+    IsolatedReplayError, IsolatedReplayRecord, ProcessTermination, run_isolated_replay,
 };
 pub use mutation::{MutatedProof, StwoMutationError, mutate_proof, proof_sha256};
+pub use replay_bundle::{
+    ReplayBundleError, ReplayBundleFiles, verify_replay_bundle, write_replay_bundle,
+};
 pub use request::{
     ReplayCase, ReplayRequest, ReplayRequestError, execute_replay_request, replay_request_sha256,
 };
