@@ -632,6 +632,21 @@ fn relation_identity_is_consistent_across_components() {
             .iter()
             .any(|finding| finding.message.contains("conflicting with arity"))
     );
+
+    let first = valid_component();
+    let mut incompatible_phase = valid_component();
+    incompatible_phase.name = "incompatible-phase".into();
+    incompatible_phase.relations[0].challenge_phase = CommitmentPhase::Phase3Reduction;
+    let findings = lint_manifest(
+        &AuditManifest::new("test", vec![first, incompatible_phase]),
+        &LintOptions::default(),
+    );
+    let phase_finding = findings
+        .iter()
+        .find(|finding| finding.message.contains("conflicting with arity"))
+        .expect("cross-component challenge-phase mismatch must fail closed");
+    assert!(phase_finding.message.contains("Phase3Reduction"));
+    assert!(phase_finding.message.contains("Phase2Interaction"));
 }
 
 #[test]
