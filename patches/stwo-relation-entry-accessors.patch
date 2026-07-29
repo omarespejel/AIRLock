@@ -2,17 +2,11 @@ diff --git a/crates/constraint-framework/src/lib.rs b/crates/constraint-framewor
 index 9ac888bf..b0ba25ca 100644
 --- a/crates/constraint-framework/src/lib.rs
 +++ b/crates/constraint-framework/src/lib.rs
-@@ -266,6 +266,7 @@ pub struct RelationEntry<'a, F: Clone, EF: RelationEFTraitBound<F>, R: Relation<
-     values: &'a [F],
- }
+@@ -268,2 +268,3 @@ pub struct RelationEntry<'a, F: Clone, EF: RelationEFTraitBound<F>, R: Relation<
  impl<'a, F: Clone, EF: RelationEFTraitBound<F>, R: Relation<F, EF>> RelationEntry<'a, F, EF, R> {
 +    /// Creates a new relation entry.
      pub const fn new(relation: &'a R, multiplicity: EF, values: &'a [F]) -> Self {
-         Self {
-             relation,
-@@ -273,6 +274,21 @@ impl<'a, F: Clone, EF: RelationEFTraitBound<F>, R: Relation<F, EF>> RelationEntr
-             values,
-         }
+@@ -275,2 +276,17 @@ impl<'a, F: Clone, EF: RelationEFTraitBound<F>, R: Relation<F, EF>> RelationEntr
      }
 +
 +    /// Relation being written into.
@@ -30,5 +24,3 @@ index 9ac888bf..b0ba25ca 100644
 +        self.values
 +    }
  }
- 
- #[macro_export]

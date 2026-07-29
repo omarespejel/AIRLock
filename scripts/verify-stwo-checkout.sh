@@ -38,7 +38,7 @@ expected_status=" M $TARGET"
 [[ "$status" == "$expected_status" ]] || fail \
   "unexpected Stwo working tree state; expected only '$expected_status', got '${status:-clean}'"
 
-git -C "$STWO_DIR" diff --no-ext-diff --binary -- "$TARGET" >"$TMP_PATCH"
+git -C "$STWO_DIR" diff --no-ext-diff --binary --unified=1 -- "$TARGET" >"$TMP_PATCH"
 if ! cmp -s "$PATCH" "$TMP_PATCH"; then
   fail "Stwo accessor diff does not match $PATCH"
 fi

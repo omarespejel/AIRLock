@@ -29,6 +29,13 @@ require_clean_tree() {
 
 require_clean_tree
 
+if git rev-parse --verify --quiet 'origin/main^{commit}' >/dev/null; then
+  MERGE_BASE="$(git merge-base HEAD origin/main)"
+  git diff --check "$MERGE_BASE"...HEAD
+else
+  git diff-tree --check --no-commit-id -r HEAD
+fi
+
 run_expected_failure() {
   local name="$1"
   local expected="$2"
