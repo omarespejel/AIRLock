@@ -46,6 +46,7 @@ Before semantic analysis, the generic linter also requires:
 - unique component, constraint, column, and preprocessed identities;
 - nonempty column masks, consistent interaction indices, and every expression
   read to resolve to a declared column and declared mask offset;
+- nonempty labels for named `Other` semantic annotations;
 - canonical M31 representatives for base constants and every QM31 limb;
 - row ranges to be nonempty and contained in the component domain;
 - preprocessed physical length to equal the component domain, with semantic length

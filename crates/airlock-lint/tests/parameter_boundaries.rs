@@ -299,6 +299,15 @@ fn column_metadata_and_relation_shapes_fail_closed() {
         FindingCode::InvalidColumnContract
     ));
 
+    let mut empty_other_label = valid_component();
+    empty_other_label.columns[1].semantic_type = SemanticType::Other {
+        label: "   ".into(),
+    };
+    assert!(has_code(
+        &empty_other_label,
+        FindingCode::InvalidColumnContract
+    ));
+
     let mut empty_name = valid_component();
     empty_name.name.clear();
     assert!(has_code(&empty_name, FindingCode::InvalidManifestStructure));

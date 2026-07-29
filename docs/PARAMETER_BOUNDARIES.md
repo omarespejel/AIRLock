@@ -36,6 +36,8 @@ well as missing, malformed, stale, and correctly recomputed hashes.
   offset listed in that column's mask.
 - Declared masks are nonempty; offsets are unique; and a supplied Stwo
   interaction index must match the column kind.
+- Named `Other` semantic annotations require a nonempty label; an empty label
+  cannot bypass the missing-annotation gate.
 - Column kind fixes its commitment phase: public preprocessed, original witness,
   or interaction.
 - Every column or formal parameter used by a relation must be available strictly

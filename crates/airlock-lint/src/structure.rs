@@ -139,6 +139,19 @@ pub fn lint_component_structure(component: &ComponentManifest) -> Vec<Finding> {
                 &mut findings,
             );
         }
+        if let SemanticType::Other { label } = &column.semantic_type
+            && label.trim().is_empty()
+        {
+            findings.push(structure_finding(
+                component,
+                FindingCode::InvalidColumnContract,
+                format!(
+                    "column `{}` uses an Other semantic type without a nonempty label",
+                    column.id
+                ),
+                vec![column.id.clone()],
+            ));
+        }
 
         let (expected_phase, expected_interaction) = match column.kind {
             ColumnKind::Preprocessed => (CommitmentPhase::Phase0Public, 0),
