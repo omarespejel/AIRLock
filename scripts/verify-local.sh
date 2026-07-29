@@ -2,11 +2,32 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TOOLCHAIN="${AIRLOCK_RUST_TOOLCHAIN:-nightly-2026-01-15}"
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/airlock-verify.XXXXXX")"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 cd "$ROOT"
+
+TOOLCHAIN="$(sed -n 's/^channel = "\([^"]*\)"/\1/p' rust-toolchain.toml)"
+if [[ -z "$TOOLCHAIN" ]] || [[ "$(printf '%s\n' "$TOOLCHAIN" | wc -l | tr -d ' ')" != "1" ]]; then
+  printf 'FAIL: rust-toolchain.toml must contain exactly one channel\n' >&2
+  exit 1
+fi
+
+CURRENT_COMMIT="$(git rev-parse HEAD)"
+if [[ -n "${AIRLOCK_EXPECTED_COMMIT:-}" ]] && [[ "$CURRENT_COMMIT" != "$AIRLOCK_EXPECTED_COMMIT" ]]; then
+  printf 'FAIL: expected commit %s, checked out %s\n' "$AIRLOCK_EXPECTED_COMMIT" "$CURRENT_COMMIT" >&2
+  exit 1
+fi
+
+require_clean_tree() {
+  if [[ -n "$(git status --porcelain --untracked-files=normal)" ]]; then
+    printf 'FAIL: canonical validation requires a clean working tree\n' >&2
+    git status --short >&2
+    return 1
+  fi
+}
+
+require_clean_tree
 
 run_expected_failure() {
   local name="$1"
@@ -28,7 +49,7 @@ run_expected_failure() {
 }
 
 printf 'AIRLock local gate\n'
-printf '  commit: %s\n' "$(git rev-parse HEAD)"
+printf '  commit: %s\n' "$CURRENT_COMMIT"
 printf '  toolchain: %s\n' "$TOOLCHAIN"
 
 cargo +"$TOOLCHAIN" fmt --all -- --check
@@ -63,5 +84,11 @@ run_expected_failure \
   protocol-out-of-model \
   'protocol lane is OUT_OF_MODEL' \
   cargo +"$TOOLCHAIN" run --quiet --locked -p airlock-cli -- protocol
+
+if [[ "$(git rev-parse HEAD)" != "$CURRENT_COMMIT" ]]; then
+  printf 'FAIL: HEAD changed while validation was running\n' >&2
+  exit 1
+fi
+require_clean_tree
 
 printf 'AIRLOCK LOCAL GATE PASSED\n'

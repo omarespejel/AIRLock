@@ -58,7 +58,7 @@ Focus findings on:
 - missing preprocessed concreteness or semantic_length vs physical_length;
 - compressed-only LogUp views that drop tuple/multiplicity/role;
 - existential challenge modeling that confuses BAD_CHALLENGE with CONFIRMED_SAT;
-- coverage manifests that omit executable surfaces;
+- coverage manifests that omit executable proof-system or AIR surfaces;
 - green results on UNKNOWN/UNSUPPORTED;
 - docs that collapse lanes into sound=true.
 - proof or manifest shape checked after it influences a transcript;

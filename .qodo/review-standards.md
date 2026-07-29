@@ -68,3 +68,7 @@ Bad review comments are generic, stylistic, or impossible to verify.
 | Evidence / provenance | separate gate |
 
 A green AIR lane must not collapse the other three.
+
+`docs/coverage.yaml` inventories analyzed proof-system surfaces. Repository
+scripts and hooks belong to the test/release control plane, not the
+cryptographic coverage manifest.

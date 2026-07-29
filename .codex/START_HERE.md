@@ -42,7 +42,7 @@ Confirm all of the following:
 
 - the analyzed upstream commit is pinned;
 - the exporter and AuditIR schema preserve every value used by the check;
-- the coverage manifest lists the executable surface;
+- the coverage manifest lists the executable proof-system or AIR surface;
 - the vulnerable fixture fails for the intended invariant;
 - the fixed fixture passes that invariant without hiding another lane;
 - unsupported lanes remain visibly blocked;
