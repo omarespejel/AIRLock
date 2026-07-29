@@ -40,6 +40,11 @@ An export is not faithful enough for `COVERED` unless it retains:
 - LogUp finalization flag;
 - semantic annotations for columns on covered surfaces.
 
+Concrete preprocessed values must be canonical M31 representatives, match their
+content hash, and have physical length equal to the component domain. The
+generic linter rechecks these contracts for hand-authored manifests instead of
+trusting the exporter alone.
+
 `ExprEvaluator` alone is insufficient: it turns preprocessed columns into
 `Param(id)` and compresses LogUp tuples. V0 fixtures hand-author AuditIR;
 `airlock-export` adds `AuditEvaluator` that records uncompressed relations and
@@ -66,6 +71,7 @@ required build pin is not presented as observed manifest provenance.
 | Code | Meaning |
 | --- | --- |
 | `INVALID_SCHEMA_IDENTITY` | manifest schema id/version does not match the implemented AuditIR contract |
+| `INVALID_PREPROCESSED_CONTRACT` | preprocessed length, source, values, or hash is inconsistent |
 | `TABLE_MULTIPLICITY_OUTSIDE_SEMANTIC_SUPPORT` | Q8 class |
 | `NONFUNCTIONAL_LOOKUP_KEY` | key maps to multiple values on allowed rows |
 | `ADMITTED_BOUND_EXCEEDS_ENCODER` | H1 class |

@@ -362,3 +362,35 @@ fn stale_or_foreign_audit_schema_fails_closed() {
             .any(|finding| finding.code == FindingCode::InvalidSchemaIdentity)
     );
 }
+
+#[test]
+fn preprocessed_contract_rejects_domain_mismatch_and_noncanonical_values() {
+    let mut domain_mismatch = q8_component(false);
+    let preprocessed = &mut domain_mismatch.preprocessed[0];
+    preprocessed.physical_length = PHYSICAL - 1;
+    preprocessed
+        .values
+        .as_mut()
+        .unwrap()
+        .truncate((PHYSICAL - 1) as usize);
+    preprocessed.values_hash = Some(airlock_ir::hash_u32_values(
+        preprocessed.values.as_ref().unwrap(),
+    ));
+    let findings = lint_component(&domain_mismatch, &LintOptions::default());
+    assert!(findings.iter().any(|finding| {
+        finding.code == FindingCode::InvalidPreprocessedContract
+            && finding.message.contains("domain_size")
+    }));
+
+    let mut noncanonical = q8_component(false);
+    let preprocessed = &mut noncanonical.preprocessed[0];
+    preprocessed.values.as_mut().unwrap()[0] = airlock_ir::M31_P;
+    preprocessed.values_hash = Some(airlock_ir::hash_u32_values(
+        preprocessed.values.as_ref().unwrap(),
+    ));
+    let findings = lint_component(&noncanonical, &LintOptions::default());
+    assert!(findings.iter().any(|finding| {
+        finding.code == FindingCode::InvalidPreprocessedContract
+            && finding.message.contains("canonical M31")
+    }));
+}

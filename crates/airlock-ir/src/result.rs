@@ -38,6 +38,8 @@ pub enum Severity {
 pub enum FindingCode {
     /// Manifest schema identity or version is not the one this analyzer implements.
     InvalidSchemaIdentity,
+    /// Preprocessed data, length, source, or content hash is inconsistent.
+    InvalidPreprocessedContract,
     /// Table multiplicity can be nonzero outside semantic support.
     TableMultiplicityOutsideSemanticSupport,
     /// Lookup key maps to multiple values on rows where multiplicity may be nonzero.

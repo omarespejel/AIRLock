@@ -1,6 +1,8 @@
 //! Turn an evaluated [`AuditEvaluator`] into an AuditIR component.
 
+use std::any::Any;
 use std::collections::{BTreeMap, HashSet};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use airlock_ir::{
     AuditManifest, BaseExpr, ColumnDecl, ColumnKind, CommitmentPhase, ComponentManifest,
@@ -43,8 +45,15 @@ pub fn export_component<E: FrameworkEval>(
     eval: &E,
     annotations: ExportAnnotations,
 ) -> Result<AuditManifest, ExportError> {
-    let auditor = eval.evaluate(AuditEvaluator::new(eval.log_size()));
-    let info = eval.evaluate(InfoEvaluator::empty());
+    let auditor = catch_unwind(AssertUnwindSafe(|| {
+        eval.evaluate(AuditEvaluator::new(eval.log_size()))
+    }))
+    .map_err(|payload| {
+        ExportError::Faithfulness(format!(
+            "AuditEvaluator panicked: {}",
+            panic_message(payload.as_ref())
+        ))
+    })?;
 
     if !auditor.structural_errors.is_empty() {
         return Err(ExportError::Faithfulness(format!(
@@ -52,6 +61,14 @@ pub fn export_component<E: FrameworkEval>(
             auditor.structural_errors.join("; ")
         )));
     }
+    let info = catch_unwind(AssertUnwindSafe(|| eval.evaluate(InfoEvaluator::empty()))).map_err(
+        |payload| {
+            ExportError::Faithfulness(format!(
+                "InfoEvaluator panicked: {}",
+                panic_message(payload.as_ref())
+            ))
+        },
+    )?;
     if auditor.constraints.len() != info.n_constraints {
         return Err(ExportError::Faithfulness(format!(
             "constraint count mismatch: audit={} info={}",
@@ -82,6 +99,14 @@ pub fn export_component<E: FrameworkEval>(
 
     let component = build_component(&auditor, eval, annotations)?;
     Ok(AuditManifest::new(AIRLOCK_EXPORT_VERSION, vec![component]))
+}
+
+fn panic_message(payload: &(dyn Any + Send)) -> &str {
+    payload
+        .downcast_ref::<&str>()
+        .copied()
+        .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+        .unwrap_or("non-string panic payload")
 }
 
 fn build_component<E: FrameworkEval>(
@@ -117,7 +142,7 @@ fn build_component<E: FrameworkEval>(
                 prep.id
             )));
         }
-        validate_preprocessed_attachment(&prep.id, attachment)?;
+        validate_preprocessed_attachment(&prep.id, attachment, domain_size)?;
         columns.push(ColumnDecl {
             id: prep.id.clone(),
             name: prep.id.clone(),
@@ -197,7 +222,7 @@ fn build_component<E: FrameworkEval>(
                 prep.id
             )));
         }
-        validate_preprocessed_attachment(&prep.id, attachment)?;
+        validate_preprocessed_attachment(&prep.id, attachment, domain_size)?;
         preprocessed.push(attachment.to_ir(prep.id.clone()));
     }
     for id in annotations.preprocessed.keys() {
@@ -413,7 +438,14 @@ fn insert_parameter_sort(
 fn validate_preprocessed_attachment(
     id: &str,
     attachment: &crate::annotations::PreprocessedAttachment,
+    domain_size: u64,
 ) -> Result<(), ExportError> {
+    if attachment.physical_length != domain_size {
+        return Err(ExportError::MissingAnnotation(format!(
+            "preprocessed column `{id}` physical_length {} does not match component domain_size {domain_size}",
+            attachment.physical_length
+        )));
+    }
     if attachment.semantic_length > attachment.physical_length {
         return Err(ExportError::MissingAnnotation(format!(
             "preprocessed column `{id}` semantic_length {} exceeds physical_length {}",
@@ -427,6 +459,13 @@ fn validate_preprocessed_attachment(
             "preprocessed column `{id}` values.len()={} != physical_length {}",
             values.len(),
             attachment.physical_length
+        )));
+    }
+    if let Some(values) = &attachment.values
+        && let Some(value) = values.iter().find(|value| **value >= airlock_ir::M31_P)
+    {
+        return Err(ExportError::MissingAnnotation(format!(
+            "preprocessed column `{id}` contains noncanonical M31 value {value}"
         )));
     }
     Ok(())

@@ -8,6 +8,7 @@ use crate::encoder::lint_encoder_bounds;
 use crate::logup::lint_logup_finalization;
 use crate::lookup::{lint_lookup_functionality, lint_table_multiplicity_support};
 use crate::parameter::lint_parameter_contract;
+use crate::preprocessed::lint_preprocessed_contract;
 
 /// Options for the static gate.
 #[derive(Clone, Debug, Default)]
@@ -22,6 +23,7 @@ pub fn lint_component(
     options: &LintOptions,
 ) -> Vec<Finding> {
     let mut findings = Vec::new();
+    findings.extend(lint_preprocessed_contract(component));
     findings.extend(lint_table_multiplicity_support(component));
     findings.extend(lint_lookup_functionality(component));
     findings.extend(lint_encoder_bounds(component));

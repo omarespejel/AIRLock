@@ -181,14 +181,12 @@ impl EvalAtRow for AuditEvaluator {
                 .push("finalize_logup_batched called with batch_size 0".into());
             return;
         }
-        // Components with no relation entries may still call finalize. Treat that as
-        // a no-op rather than panicking (Stwo's ExprEvaluator panics; AuditEvaluator
-        // is an assurance tool and should fail closed without crashing the host).
-        if self.logup.fracs.is_empty() {
-            self.logup.is_finalized = true;
-            self.logup_finalized = true;
+        if self.logup_finalized {
+            self.structural_errors
+                .push("LogUp finalization was called more than once".into());
             return;
         }
+        self.logup_finalized = true;
         if self.logup.is_finalized {
             self.structural_errors
                 .push("LogupAtRow was already finalized".into());
@@ -222,7 +220,6 @@ impl EvalAtRow for AuditEvaluator {
         let shifted_diff = diff + self.logup.cumsum_shift.clone();
         self.add_constraint(shifted_diff * last_frac.denominator - last_frac.numerator);
         self.logup.is_finalized = true;
-        self.logup_finalized = true;
     }
 
     fn finalize_logup(&mut self) {

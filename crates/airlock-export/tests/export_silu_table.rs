@@ -25,6 +25,10 @@ struct IntermediateAir;
 
 struct OversizedAir;
 
+struct EmptyFinalizeAir {
+    calls: usize,
+}
+
 impl FrameworkEval for SiluTableAir {
     fn log_size(&self) -> u32 {
         LOG_SIZE
@@ -82,6 +86,23 @@ impl FrameworkEval for OversizedAir {
     }
 
     fn evaluate<E: EvalAtRow>(&self, eval: E) -> E {
+        eval
+    }
+}
+
+impl FrameworkEval for EmptyFinalizeAir {
+    fn log_size(&self) -> u32 {
+        4
+    }
+
+    fn max_constraint_log_degree_bound(&self) -> u32 {
+        5
+    }
+
+    fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
+        for _ in 0..self.calls {
+            eval.finalize_logup();
+        }
         eval
     }
 }
@@ -316,6 +337,45 @@ fn export_rejects_preprocessed_length_mismatch() {
     attachment.physical_length = 8;
     let err = export_component(&air, ann).expect_err("must reject length mismatch");
     assert!(err.to_string().contains("physical_length"), "{}", err);
+}
+
+#[test]
+fn export_rejects_self_consistent_preprocessed_length_outside_component_domain() {
+    let air = SiluTableAir;
+    let mut ann = annotations(false);
+    let attachment = ann.preprocessed.get_mut("table_code").unwrap();
+    attachment.physical_length = 8;
+    attachment.values.as_mut().unwrap().truncate(8);
+    let err = export_component(&air, ann).expect_err("component domain must bind prep length");
+    assert!(err.to_string().contains("domain_size"), "{err}");
+}
+
+#[test]
+fn export_rejects_noncanonical_m31_preprocessed_values() {
+    let air = SiluTableAir;
+    let mut ann = annotations(false);
+    ann.preprocessed
+        .get_mut("table_code")
+        .unwrap()
+        .values
+        .as_mut()
+        .unwrap()[0] = airlock_ir::M31_P;
+    let err = export_component(&air, ann).expect_err("noncanonical M31 value must fail");
+    assert!(err.to_string().contains("noncanonical M31"), "{err}");
+}
+
+#[test]
+fn empty_logup_finalization_fails_without_panicking() {
+    let no_finalize =
+        export_component(&EmptyFinalizeAir { calls: 0 }, ExportAnnotations::default())
+            .expect("an empty component need not finalize LogUp");
+    assert!(!no_finalize.components[0].logup_finalized);
+
+    for calls in [1, 2] {
+        let err = export_component(&EmptyFinalizeAir { calls }, ExportAnnotations::default())
+            .expect_err("empty LogUp finalization must fail closed");
+        assert!(err.to_string().contains("already finalized"), "{err}");
+    }
 }
 
 #[test]

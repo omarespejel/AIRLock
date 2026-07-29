@@ -15,7 +15,7 @@ or that a green AIRLock report establishes whole-system STARK security.
 | Piece | State |
 | --- | --- |
 | AuditIR schema (`airlock-ir`) | landed |
-| Static gate (`airlock-lint`) | schema + parameter closure + Q8 support/functionality + encoder bound + LogUp finalize |
+| Static gate (`airlock-lint`) | schema + parameter closure + preprocessed integrity + Q8 support/functionality + encoder bound + LogUp finalize |
 | CLI (`airlock`) | `air`, `coverage`, `schema` |
 | Stwo `AuditEvaluator` exporter | landed (`airlock-export`); needs RelationEntry accessors — see `docs/STWO_PATCH.md` |
 | cvc5 / Lean / phase injection | later PRs |
