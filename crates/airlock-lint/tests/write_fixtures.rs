@@ -86,6 +86,7 @@ fn q8(vulnerable: bool) -> ComponentManifest {
                 }),
             },
         ],
+        parameters: vec![],
         constraints: vec![],
         relations: vec![RelationEntry {
             relation: "SiLU".into(),
@@ -157,6 +158,7 @@ fn write_seeded_fixtures() {
             log_size: 4,
             domain_size: 16,
             columns: vec![],
+            parameters: vec![],
             constraints: vec![],
             relations: vec![],
             preprocessed: vec![],

@@ -1,6 +1,6 @@
 {
   "schema": "airlock.audit-ir",
-  "schema_version": "0.1.0",
+  "schema_version": "0.3.0",
   "airlock_version": "0.1.0",
   "components": [
     {
@@ -57,6 +57,7 @@
           }
         }
       ],
+      "parameters": [],
       "constraints": [],
       "relations": [
         {

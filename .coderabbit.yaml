@@ -6,6 +6,7 @@ language: en-US
 
 early_access: false
 enable_free_tier: true
+# Keep under 250 characters or CodeRabbit rejects the configuration.
 tone_instructions: >-
   Prioritize soundness, exporter faithfulness, integer and lookup semantics,
   fail-closed coverage, claim hygiene, and regressions. Keep findings concise

@@ -36,6 +36,10 @@ pub enum Severity {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum FindingCode {
+    /// Manifest schema identity or version is not the one this analyzer implements.
+    InvalidSchemaIdentity,
+    /// Preprocessed data, length, source, or content hash is inconsistent.
+    InvalidPreprocessedContract,
     /// Table multiplicity can be nonzero outside semantic support.
     TableMultiplicityOutsideSemanticSupport,
     /// Lookup key maps to multiple values on rows where multiplicity may be nonzero.
@@ -52,6 +56,8 @@ pub enum FindingCode {
     MissingSemanticAnnotation,
     /// Inverse without nonzero obligation.
     InverseWithoutNonzeroObligation,
+    /// Formal parameter declarations do not close the exported expressions.
+    InvalidParameterContract,
     /// Surface missing from coverage manifest.
     SurfaceNotListed,
     /// Other / custom.
@@ -138,8 +144,12 @@ pub struct GateReport {
 
 impl GateReport {
     /// Build a blocked report from findings.
+    ///
+    /// `ir_schema` must be the analyzed manifest's `schema_version`, not necessarily
+    /// the tool's current `IR_SCHEMA_VERSION`.
     pub fn from_static_findings(
         airlock_version: impl Into<String>,
+        ir_schema: impl Into<String>,
         findings: Vec<Finding>,
     ) -> Self {
         let blocked = findings.iter().any(|f| f.severity >= Severity::High);
@@ -155,7 +165,7 @@ impl GateReport {
             source_commit: None,
             stwo_commit: None,
             airlock_version: airlock_version.into(),
-            ir_schema: crate::IR_SCHEMA_VERSION.to_string(),
+            ir_schema: ir_schema.into(),
             findings,
             air_verdict,
             lanes: vec![

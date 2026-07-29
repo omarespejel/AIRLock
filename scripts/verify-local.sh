@@ -29,6 +29,13 @@ require_clean_tree() {
 
 require_clean_tree
 
+if git rev-parse --verify --quiet 'origin/main^{commit}' >/dev/null; then
+  MERGE_BASE="$(git merge-base HEAD origin/main)"
+  git diff --check "$MERGE_BASE"...HEAD
+else
+  git diff-tree --check --no-commit-id -r HEAD
+fi
+
 run_expected_failure() {
   local name="$1"
   local expected="$2"
@@ -52,6 +59,7 @@ printf 'AIRLock local gate\n'
 printf '  commit: %s\n' "$CURRENT_COMMIT"
 printf '  toolchain: %s\n' "$TOOLCHAIN"
 
+scripts/verify-stwo-checkout.sh
 cargo +"$TOOLCHAIN" fmt --all -- --check
 cargo +"$TOOLCHAIN" clippy --workspace --all-targets --locked -- -D warnings
 cargo +"$TOOLCHAIN" test --workspace --all-targets --locked

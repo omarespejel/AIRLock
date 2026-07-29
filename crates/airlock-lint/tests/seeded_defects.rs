@@ -2,10 +2,11 @@
 
 use airlock_ir::{
     AuditManifest, BaseExpr, ColumnDecl, ColumnKind, CommitmentPhase, ComponentManifest,
-    FindingCode, IntegerEncoding, PreprocessedColumn, RelationEntry, RelationRole, RowSupport,
-    SemanticContract, SemanticType, Severity, SignedEncoding,
+    ConstraintDecl, ExtExpr, FieldSort, FindingCode, IntegerEncoding, ParameterDecl, ParameterRole,
+    PreprocessedColumn, RelationEntry, RelationRole, RowSupport, SemanticContract, SemanticType,
+    Severity, SignedEncoding,
 };
-use airlock_lint::{LintOptions, lint_component};
+use airlock_lint::{LintOptions, lint_component, lint_manifest};
 
 const SEMANTIC: u64 = 16;
 const PHYSICAL: u64 = 32;
@@ -90,6 +91,7 @@ fn q8_component(vulnerable: bool) -> ComponentManifest {
                 }),
             },
         ],
+        parameters: vec![],
         constraints: vec![],
         relations: vec![RelationEntry {
             relation: "SiLU".into(),
@@ -137,6 +139,7 @@ fn encoder_mismatch_component() -> ComponentManifest {
         log_size: 4,
         domain_size: 16,
         columns: vec![],
+        parameters: vec![],
         constraints: vec![],
         relations: vec![],
         preprocessed: vec![],
@@ -154,6 +157,16 @@ fn encoder_mismatch_component() -> ComponentManifest {
             ..SemanticContract::default()
         },
         logup_finalized: true,
+    }
+}
+
+fn parameter_constraint(name: &str) -> ConstraintDecl {
+    ConstraintDecl {
+        id: "formal-parameter".into(),
+        expression: ExtExpr::Param { name: name.into() },
+        row_support: RowSupport::All,
+        source_location: None,
+        semantic_claim: None,
     }
 }
 
@@ -199,6 +212,88 @@ fn encoder_admissibility_mismatch_is_high() {
 }
 
 #[test]
+fn undeclared_and_escaped_parameters_fail_closed() {
+    let mut component = q8_component(false);
+    component.constraints = vec![
+        parameter_constraint("unknown_claim"),
+        parameter_constraint("intermediate0"),
+    ];
+
+    let findings = lint_component(&component, &LintOptions::default());
+    assert!(findings.iter().any(|finding| {
+        finding.code == FindingCode::InvalidParameterContract
+            && finding.message.contains("unknown_claim")
+            && finding.message.contains("no declaration")
+    }));
+    assert!(findings.iter().any(|finding| {
+        finding.code == FindingCode::InvalidParameterContract
+            && finding.message.contains("intermediate0")
+            && finding.message.contains("escaped")
+    }));
+}
+
+#[test]
+fn exact_typed_parameter_contract_passes() {
+    let mut component = q8_component(false);
+    component.constraints = vec![parameter_constraint("public_digest")];
+    component.parameters = vec![ParameterDecl {
+        name: "public_digest".into(),
+        field: FieldSort::Qm31,
+        role: ParameterRole::PublicInput,
+        available_after: CommitmentPhase::Phase0Public,
+    }];
+
+    let findings = lint_component(&component, &LintOptions::default());
+    assert!(
+        findings
+            .iter()
+            .all(|finding| finding.code != FindingCode::InvalidParameterContract),
+        "typed closure should pass: {findings:?}"
+    );
+}
+
+#[test]
+fn duplicate_unused_and_mistyped_parameters_fail_closed() {
+    let mut component = q8_component(false);
+    component.constraints = vec![parameter_constraint("wrong_field")];
+    component.parameters = vec![
+        ParameterDecl {
+            name: "wrong_field".into(),
+            field: FieldSort::M31,
+            role: ParameterRole::PublicInput,
+            available_after: CommitmentPhase::Phase0Public,
+        },
+        ParameterDecl {
+            name: "unused".into(),
+            field: FieldSort::Qm31,
+            role: ParameterRole::PublicClaim,
+            available_after: CommitmentPhase::Phase0Public,
+        },
+        ParameterDecl {
+            name: "unused".into(),
+            field: FieldSort::Qm31,
+            role: ParameterRole::PublicClaim,
+            available_after: CommitmentPhase::Phase0Public,
+        },
+    ];
+
+    let findings = lint_component(&component, &LintOptions::default());
+    for marker in [
+        "declared more than once",
+        "never referenced",
+        "declared as M31",
+    ] {
+        assert!(
+            findings.iter().any(|finding| {
+                finding.code == FindingCode::InvalidParameterContract
+                    && finding.message.contains(marker)
+            }),
+            "missing `{marker}` finding: {findings:?}"
+        );
+    }
+}
+
+#[test]
 fn logup_unfinalized_is_flagged() {
     let mut component = q8_component(false);
     component.logup_finalized = false;
@@ -230,7 +325,7 @@ fn coverage_manifest_fail_closed_on_missing_surface() {
 fn gate_report_never_collapses_lanes_to_sound_true() {
     let component = q8_component(true);
     let findings = lint_component(&component, &LintOptions::default());
-    let report = airlock_ir::GateReport::from_static_findings("0.1.0", findings);
+    let report = airlock_ir::GateReport::from_static_findings("0.1.0", "0.1.0", findings);
     assert_eq!(report.overall_release_status, "BLOCKED");
     assert!(
         report
@@ -247,4 +342,82 @@ fn audit_manifest_roundtrips_json() {
     let parsed: AuditManifest = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed.components[0].name, manifest.components[0].name);
     assert_eq!(parsed.schema, airlock_ir::IR_SCHEMA_ID);
+}
+
+#[test]
+fn stale_or_foreign_audit_schema_fails_closed() {
+    let mut manifest = AuditManifest::new("0.1.0", vec![q8_component(false)]);
+    manifest.schema_version = "0.2.0".into();
+    let findings = lint_manifest(&manifest, &LintOptions::default());
+    assert!(findings.iter().any(|finding| {
+        finding.code == FindingCode::InvalidSchemaIdentity && finding.severity == Severity::High
+    }));
+
+    manifest.schema_version = airlock_ir::IR_SCHEMA_VERSION.into();
+    manifest.schema = "foreign.audit-ir".into();
+    let findings = lint_manifest(&manifest, &LintOptions::default());
+    assert!(
+        findings
+            .iter()
+            .any(|finding| finding.code == FindingCode::InvalidSchemaIdentity)
+    );
+}
+
+#[test]
+fn preprocessed_contract_rejects_domain_mismatch_and_noncanonical_values() {
+    let mut domain_mismatch = q8_component(false);
+    let preprocessed = &mut domain_mismatch.preprocessed[0];
+    preprocessed.physical_length = PHYSICAL - 1;
+    preprocessed
+        .values
+        .as_mut()
+        .unwrap()
+        .truncate((PHYSICAL - 1) as usize);
+    preprocessed.values_hash = Some(airlock_ir::hash_u32_values(
+        preprocessed.values.as_ref().unwrap(),
+    ));
+    let findings = lint_component(&domain_mismatch, &LintOptions::default());
+    assert!(findings.iter().any(|finding| {
+        finding.code == FindingCode::InvalidPreprocessedContract
+            && finding.message.contains("domain_size")
+    }));
+
+    let mut noncanonical = q8_component(false);
+    let preprocessed = &mut noncanonical.preprocessed[0];
+    preprocessed.values.as_mut().unwrap()[0] = airlock_ir::M31_P;
+    preprocessed.values_hash = Some(airlock_ir::hash_u32_values(
+        preprocessed.values.as_ref().unwrap(),
+    ));
+    let findings = lint_component(&noncanonical, &LintOptions::default());
+    assert!(findings.iter().any(|finding| {
+        finding.code == FindingCode::InvalidPreprocessedContract
+            && finding.message.contains("canonical M31")
+    }));
+}
+
+#[test]
+fn preprocessed_contract_closes_column_attachment_mapping() {
+    let mut missing = q8_component(false);
+    missing.preprocessed.clear();
+    let findings = lint_component(&missing, &LintOptions::default());
+    assert!(findings.iter().any(|finding| {
+        finding.code == FindingCode::InvalidPreprocessedContract
+            && finding.message.contains("exactly one value or generator")
+    }));
+
+    let mut orphaned = q8_component(false);
+    orphaned.preprocessed[0].id = "orphaned_table".into();
+    let findings = lint_component(&orphaned, &LintOptions::default());
+    assert!(findings.iter().any(|finding| {
+        finding.code == FindingCode::InvalidPreprocessedContract
+            && finding.message.contains("exactly one preprocessed column")
+    }));
+
+    let mut wrong_kind = q8_component(false);
+    wrong_kind.columns[0].kind = ColumnKind::Witness;
+    let findings = lint_component(&wrong_kind, &LintOptions::default());
+    assert!(findings.iter().any(|finding| {
+        finding.code == FindingCode::InvalidPreprocessedContract
+            && finding.message.contains("exactly one preprocessed column")
+    }));
 }

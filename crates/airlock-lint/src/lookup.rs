@@ -220,6 +220,8 @@ pub fn lint_lookup_functionality(component: &ComponentManifest) -> Vec<Finding> 
 }
 
 fn column_id(expr: &BaseExpr) -> Option<&str> {
+    // Preprocessed exports use Column ids. Do not treat formal Params as columns:
+    // a Param name that collides with a preprocessed id must not resolve as that column.
     match expr {
         BaseExpr::Column { id, .. } => Some(id.as_str()),
         _ => None,

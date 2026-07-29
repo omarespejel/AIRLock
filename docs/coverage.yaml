@@ -3,8 +3,11 @@ schema: airlock.coverage
 surfaces:
   - name: fused-stage-a-q7
     status: UNSUPPORTED
-    note: "Pilot target; Stwo AuditEvaluator exporter not landed yet."
+    note: "Pilot target; toy SiLU FrameworkEval export works; SparseProve Stage A not wired yet."
     profile_region: "all-admitted-shapes"
+  - name: toy-silu-table-export
+    status: UNSUPPORTED
+    note: "Exercised in airlock-export tests; not a paper surface."
   - name: fused-stage-a-q8
     status: QUARANTINED
     note: "Quarantine until padded-table support defect is fixed upstream or modeled and fixed here."
