@@ -80,7 +80,9 @@ replay. Solver/Lean tracks remain separate lanes.
   cross-interaction AIR against Stwo's `AssertEvaluator`, checks a Stwo-generated
   LogUp trace against both implementations, and compares uncompressed relation
   entries with `RelationTrackerEvaluator`. Its deterministic malicious
-  assignments validate those exercised mappings. Relation compression is
+  assignments validate those exercised mappings. Concrete evaluation rejects
+  empty constraint sets and bounded-depth violations instead of reporting a
+  vacuous result or exhausting the host stack. Relation compression is
   limited to explicitly annotated Stwo `LookupElements` implementations whose
   exact `-z` constant and `alpha`-power coefficients pass the exporter
   fingerprint; custom relation protocols and universal equivalence for every

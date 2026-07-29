@@ -7,7 +7,8 @@ use airlock_export::{
     RelationCompression, constraints_hold, evaluate_relations, export_component,
 };
 use airlock_ir::{
-    ColumnKind, CommitmentPhase, FieldSort, M31_P, RelationRole, RowSupport, SemanticContract,
+    ColumnKind, CommitmentPhase, ExtExpr as IrExtExpr, FieldSort, M31_P, RelationRole, RowSupport,
+    SemanticContract,
 };
 use num_traits::{One, Zero};
 use stwo::core::fields::m31::BaseField;
@@ -578,6 +579,11 @@ fn audit_ir_logup_lowering_accepts_native_trace_and_rejects_every_cell_mutation(
                 bind_logup_parameters(&mut assignment, claimed_sum, &lookup);
                 let exported =
                     constraints_hold(component, &assignment).expect("concrete evaluation");
+                // AssertEvaluator cannot be used as an in-process malformed
+                // LogUp oracle: its first constraint panic unwinds through an
+                // unfinalized LogupAtRow, whose Drop panic aborts the process.
+                // Native parity is instead checked on the honest trace above
+                // and row-for-row with RelationTrackerEvaluator.
                 assert!(
                     !exported,
                     "LogUp mutation {case} unexpectedly preserved the exported relation: tree={interaction} column={column} row={row}"
@@ -689,6 +695,26 @@ fn concrete_assignment_validation_fails_closed() {
     assert!(matches!(
         constraints_hold(&invalid_domain, &ConcreteAssignment::default()),
         Err(ConcreteEvaluationError::InvalidDomain { .. })
+    ));
+
+    let mut empty_constraints = component.clone();
+    empty_constraints.constraints.clear();
+    assert!(matches!(
+        constraints_hold(&empty_constraints, &assignment),
+        Err(ConcreteEvaluationError::EmptyConstraintSet)
+    ));
+
+    let mut excessive_depth = component.clone();
+    let mut expression = excessive_depth.constraints[0].expression.clone();
+    for _ in 0..128 {
+        expression = IrExtExpr::Neg {
+            inner: Box::new(expression),
+        };
+    }
+    excessive_depth.constraints[0].expression = expression;
+    assert!(matches!(
+        constraints_hold(&excessive_depth, &assignment),
+        Err(ConcreteEvaluationError::ExpressionDepthExceeded { limit: 128 })
     ));
 }
 

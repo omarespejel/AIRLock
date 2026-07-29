@@ -81,12 +81,14 @@ annotations, and retains full `SecureCol` / QM31 `Const` limbs (AuditIR schema
 
 `AuditEvaluator` numbers columns independently inside each commitment tree,
 matching Stwo's `InfoEvaluator`, `AssertEvaluator`, and relation tracker. Export
-also compares the complete per-interaction mask schedule with
-`InfoEvaluator::mask_offsets` and fails closed on divergence. The concrete
-AuditIR evaluator accepts only exact, canonical assignments, takes
-preprocessed values from the manifest, reproduces Stwo's bit-reversed
-Circle-domain offset reads, and rejects missing values, unknown values,
-generator-only preprocessing, invalid domains, and undefined inverses.
+also compares every non-empty per-interaction mask schedule with
+`InfoEvaluator::mask_offsets` and fails closed on divergence. Empty interaction
+slots contain no reads and are normalized away in this comparison. The concrete
+AuditIR evaluator accepts only exact, canonical assignments, resolves columns
+once per evaluation, takes preprocessed values from the manifest, reproduces
+Stwo's bit-reversed Circle-domain offset reads, and rejects vacuous hold
+queries, over-deep expressions, missing values, unknown values, generator-only
+preprocessing, invalid domains, and undefined inverses.
 
 The checked differential surface is deliberately small. One nonconstant
 synthetic AIR exercises previous/current/next-row reads, independent original

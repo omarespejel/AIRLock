@@ -13,6 +13,9 @@ use stwo::core::utils::{
     bit_reverse_index, circle_domain_index_to_coset_index, coset_index_to_circle_domain_index,
 };
 
+const MAX_EXPRESSION_DEPTH: usize = 128;
+type ResolvedColumns<'a> = BTreeMap<&'a str, &'a [u32]>;
+
 /// Canonical concrete values supplied for one exported component.
 ///
 /// Preprocessed values are deliberately absent: they come from the component
@@ -58,11 +61,18 @@ pub fn evaluate_constraints(
     component: &ComponentManifest,
     assignment: &ConcreteAssignment,
 ) -> Result<Vec<EvaluatedConstraint>, ConcreteEvaluationError> {
-    validate_assignment(component, assignment)?;
+    let columns = validate_assignment(component, assignment)?;
     let mut evaluated = Vec::new();
     for constraint in &component.constraints {
         for row in supported_rows(&constraint.row_support, component.domain_size)? {
-            let value = eval_ext(component, assignment, &constraint.expression, row)?;
+            let value = eval_ext(
+                component,
+                assignment,
+                &columns,
+                &constraint.expression,
+                row,
+                MAX_EXPRESSION_DEPTH,
+            )?;
             evaluated.push(EvaluatedConstraint {
                 id: constraint.id.clone(),
                 row,
@@ -78,6 +88,9 @@ pub fn constraints_hold(
     component: &ComponentManifest,
     assignment: &ConcreteAssignment,
 ) -> Result<bool, ConcreteEvaluationError> {
+    if component.constraints.is_empty() {
+        return Err(ConcreteEvaluationError::EmptyConstraintSet);
+    }
     Ok(evaluate_constraints(component, assignment)?
         .iter()
         .all(|constraint| constraint.value == [0; 4]))
@@ -91,7 +104,7 @@ pub fn evaluate_relations(
     component: &ComponentManifest,
     assignment: &ConcreteAssignment,
 ) -> Result<Vec<EvaluatedRelation>, ConcreteEvaluationError> {
-    validate_assignment(component, assignment)?;
+    let columns = validate_assignment(component, assignment)?;
     let domain_size = domain_size(component)?;
     let mut evaluated = Vec::new();
     for relation in &component.relations {
@@ -99,9 +112,26 @@ pub fn evaluate_relations(
         for row in 0..domain_size {
             let mut tuple = Vec::with_capacity(relation.tuple.len());
             for value in &relation.tuple {
-                tuple.push(eval_base(component, assignment, value, row)?.0);
+                tuple.push(
+                    eval_base(
+                        component,
+                        assignment,
+                        &columns,
+                        value,
+                        row,
+                        MAX_EXPRESSION_DEPTH,
+                    )?
+                    .0,
+                );
             }
-            let multiplicity = eval_base(component, assignment, &relation.multiplicity, row)?;
+            let multiplicity = eval_base(
+                component,
+                assignment,
+                &columns,
+                &relation.multiplicity,
+                row,
+                MAX_EXPRESSION_DEPTH,
+            )?;
             if !support.contains(&row) && !multiplicity.is_zero() {
                 return Err(
                     ConcreteEvaluationError::RelationMultiplicityOutsideSupport {
@@ -123,10 +153,10 @@ pub fn evaluate_relations(
     Ok(evaluated)
 }
 
-fn validate_assignment(
-    component: &ComponentManifest,
-    assignment: &ConcreteAssignment,
-) -> Result<(), ConcreteEvaluationError> {
+fn validate_assignment<'a>(
+    component: &'a ComponentManifest,
+    assignment: &'a ConcreteAssignment,
+) -> Result<ResolvedColumns<'a>, ConcreteEvaluationError> {
     let domain_size = domain_size(component)?;
     let mut declared_columns = BTreeSet::new();
     for column in &component.columns {
@@ -188,27 +218,24 @@ fn validate_assignment(
         }
     }
 
+    let mut resolved_columns = BTreeMap::new();
     for column in &component.columns {
-        match column.kind {
-            ColumnKind::Preprocessed => {
-                let values = component
-                    .preprocessed
-                    .iter()
-                    .find(|preprocessed| preprocessed.id == column.id)
-                    .and_then(|preprocessed| preprocessed.values.as_ref())
-                    .ok_or_else(|| {
-                        ConcreteEvaluationError::MissingPreprocessedValues(column.id.clone())
-                    })?;
-                validate_column_values(&column.id, values, domain_size)?;
-            }
-            ColumnKind::Witness | ColumnKind::Interaction => {
-                let values = assignment
-                    .columns
-                    .get(&column.id)
-                    .ok_or_else(|| ConcreteEvaluationError::MissingColumn(column.id.clone()))?;
-                validate_column_values(&column.id, values, domain_size)?;
-            }
-        }
+        let values = match column.kind {
+            ColumnKind::Preprocessed => component
+                .preprocessed
+                .iter()
+                .find(|preprocessed| preprocessed.id == column.id)
+                .and_then(|preprocessed| preprocessed.values.as_ref())
+                .ok_or_else(|| {
+                    ConcreteEvaluationError::MissingPreprocessedValues(column.id.clone())
+                })?,
+            ColumnKind::Witness | ColumnKind::Interaction => assignment
+                .columns
+                .get(&column.id)
+                .ok_or_else(|| ConcreteEvaluationError::MissingColumn(column.id.clone()))?,
+        };
+        validate_column_values(&column.id, values, domain_size)?;
+        resolved_columns.insert(column.id.as_str(), values.as_slice());
     }
 
     let mut declared_base = BTreeSet::new();
@@ -270,7 +297,7 @@ fn validate_assignment(
             ));
         }
     }
-    Ok(())
+    Ok(resolved_columns)
 }
 
 fn validate_column_values(
@@ -350,9 +377,17 @@ fn supported_rows(
 fn eval_base(
     component: &ComponentManifest,
     assignment: &ConcreteAssignment,
+    columns: &ResolvedColumns<'_>,
     expression: &BaseExpr,
     row: usize,
+    depth_remaining: usize,
 ) -> Result<BaseField, ConcreteEvaluationError> {
+    let child_depth =
+        depth_remaining
+            .checked_sub(1)
+            .ok_or(ConcreteEvaluationError::ExpressionDepthExceeded {
+                limit: MAX_EXPRESSION_DEPTH,
+            })?;
     match expression {
         BaseExpr::Param { name } => assignment
             .base_parameters
@@ -365,7 +400,7 @@ fn eval_base(
             Ok(BaseField::from(*value))
         }
         BaseExpr::Column { id, offset } => {
-            let values = resolved_column(component, assignment, id)?;
+            let values = resolved_column(columns, id)?;
             let index = offset_row(row, component.log_size, *offset);
             values
                 .get(index)
@@ -377,13 +412,28 @@ fn eval_base(
                     len: values.len(),
                 })
         }
-        BaseExpr::Add { lhs, rhs } => Ok(eval_base(component, assignment, lhs, row)?
-            + eval_base(component, assignment, rhs, row)?),
-        BaseExpr::Mul { lhs, rhs } => Ok(eval_base(component, assignment, lhs, row)?
-            * eval_base(component, assignment, rhs, row)?),
-        BaseExpr::Neg { inner } => Ok(-eval_base(component, assignment, inner, row)?),
+        BaseExpr::Add { lhs, rhs } => {
+            Ok(
+                eval_base(component, assignment, columns, lhs, row, child_depth)?
+                    + eval_base(component, assignment, columns, rhs, row, child_depth)?,
+            )
+        }
+        BaseExpr::Mul { lhs, rhs } => {
+            Ok(
+                eval_base(component, assignment, columns, lhs, row, child_depth)?
+                    * eval_base(component, assignment, columns, rhs, row, child_depth)?,
+            )
+        }
+        BaseExpr::Neg { inner } => Ok(-eval_base(
+            component,
+            assignment,
+            columns,
+            inner,
+            row,
+            child_depth,
+        )?),
         BaseExpr::Inv { inner } => {
-            let value = eval_base(component, assignment, inner, row)?;
+            let value = eval_base(component, assignment, columns, inner, row, child_depth)?;
             if value.is_zero() {
                 return Err(ConcreteEvaluationError::UndefinedInverse);
             }
@@ -395,9 +445,17 @@ fn eval_base(
 fn eval_ext(
     component: &ComponentManifest,
     assignment: &ConcreteAssignment,
+    columns: &ResolvedColumns<'_>,
     expression: &ExtExpr,
     row: usize,
+    depth_remaining: usize,
 ) -> Result<SecureField, ConcreteEvaluationError> {
+    let child_depth =
+        depth_remaining
+            .checked_sub(1)
+            .ok_or(ConcreteEvaluationError::ExpressionDepthExceeded {
+                limit: MAX_EXPRESSION_DEPTH,
+            })?;
     match expression {
         ExtExpr::Param { name } => assignment
             .extension_parameters
@@ -414,42 +472,43 @@ fn eval_ext(
         ExtExpr::SecureCol { parts } => {
             let mut values = [BaseField::zero(); 4];
             for (index, part) in parts.iter().enumerate() {
-                values[index] = eval_base(component, assignment, part, row)?;
+                values[index] = eval_base(component, assignment, columns, part, row, child_depth)?;
             }
             Ok(SecureField::from_m31_array(values))
         }
-        ExtExpr::FromBase { inner } => Ok(eval_base(component, assignment, inner, row)?.into()),
+        ExtExpr::FromBase { inner } => {
+            Ok(eval_base(component, assignment, columns, inner, row, child_depth)?.into())
+        }
         ExtExpr::Add { lhs, rhs } => {
-            Ok(eval_ext(component, assignment, lhs, row)?
-                + eval_ext(component, assignment, rhs, row)?)
+            Ok(
+                eval_ext(component, assignment, columns, lhs, row, child_depth)?
+                    + eval_ext(component, assignment, columns, rhs, row, child_depth)?,
+            )
         }
         ExtExpr::Mul { lhs, rhs } => {
-            Ok(eval_ext(component, assignment, lhs, row)?
-                * eval_ext(component, assignment, rhs, row)?)
+            Ok(
+                eval_ext(component, assignment, columns, lhs, row, child_depth)?
+                    * eval_ext(component, assignment, columns, rhs, row, child_depth)?,
+            )
         }
-        ExtExpr::Neg { inner } => Ok(-eval_ext(component, assignment, inner, row)?),
+        ExtExpr::Neg { inner } => Ok(-eval_ext(
+            component,
+            assignment,
+            columns,
+            inner,
+            row,
+            child_depth,
+        )?),
     }
 }
 
 fn resolved_column<'a>(
-    component: &'a ComponentManifest,
-    assignment: &'a ConcreteAssignment,
+    columns: &'a ResolvedColumns<'a>,
     id: &str,
 ) -> Result<&'a [u32], ConcreteEvaluationError> {
-    if let Some(column) = component.columns.iter().find(|column| column.id == id)
-        && column.kind == ColumnKind::Preprocessed
-    {
-        return component
-            .preprocessed
-            .iter()
-            .find(|preprocessed| preprocessed.id == id)
-            .and_then(|preprocessed| preprocessed.values.as_deref())
-            .ok_or_else(|| ConcreteEvaluationError::MissingPreprocessedValues(id.to_owned()));
-    }
-    assignment
-        .columns
+    columns
         .get(id)
-        .map(Vec::as_slice)
+        .copied()
         .ok_or_else(|| ConcreteEvaluationError::MissingColumn(id.to_owned()))
 }
 
@@ -479,6 +538,9 @@ fn secure_limbs(value: SecureField) -> [u32; 4] {
 /// Concrete assignment or expression evaluation failure.
 #[derive(Clone, Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ConcreteEvaluationError {
+    /// A boolean hold query cannot be green without a constraint.
+    #[error("component has no constraints to evaluate")]
+    EmptyConstraintSet,
     /// Component log size and physical size disagree.
     #[error("invalid component domain: log_size={log_size}, domain_size={domain_size}")]
     InvalidDomain {
@@ -566,6 +628,12 @@ pub enum ConcreteEvaluationError {
     /// Inversion of zero is undefined.
     #[error("concrete AuditIR evaluation attempted to invert zero")]
     UndefinedInverse,
+    /// An expression exceeds the bounded concrete-evaluation recursion depth.
+    #[error("concrete AuditIR expression exceeds depth limit {limit}")]
+    ExpressionDepthExceeded {
+        /// Maximum accepted expression-tree depth.
+        limit: usize,
+    },
     /// A range support is malformed.
     #[error("invalid concrete row support")]
     InvalidRowSupport,

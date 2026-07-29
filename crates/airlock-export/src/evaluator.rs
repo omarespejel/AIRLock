@@ -18,6 +18,7 @@ use stwo_constraint_framework::{
 use crate::annotations::RelationCompression;
 
 const MAX_RELATION_FINGERPRINT_TERMS: usize = 4096;
+const MAX_RELATION_FINGERPRINT_DEPTH: usize = 128;
 
 /// One uncompressed relation participation captured before challenge compression.
 #[derive(Clone, Debug)]
@@ -241,11 +242,13 @@ fn secure_from_reference(label: &str, limbs: [u32; 4]) -> Result<SecureField, St
     Ok(SecureField::from_m31_array(limbs.map(BaseField::from)))
 }
 
-fn normalize_base_polynomial(
+fn normalize_base_polynomial_bounded(
     expression: &BaseExpr,
     variable_names: &[String],
     term_limit: usize,
+    depth_remaining: usize,
 ) -> Result<BasePolynomial, String> {
+    let child_depth = fingerprint_child_depth(depth_remaining)?;
     match expression {
         BaseExpr::Const(value) => Ok(base_constant(*value, variable_names.len())),
         BaseExpr::Param(name) => {
@@ -260,22 +263,29 @@ fn normalize_base_polynomial(
             Ok(BTreeMap::from([(monomial, BaseField::one())]))
         }
         BaseExpr::Add(left, right) => {
-            let left = normalize_base_polynomial(left, variable_names, term_limit)?;
-            let right = normalize_base_polynomial(right, variable_names, term_limit)?;
+            let left =
+                normalize_base_polynomial_bounded(left, variable_names, term_limit, child_depth)?;
+            let right =
+                normalize_base_polynomial_bounded(right, variable_names, term_limit, child_depth)?;
             add_base_polynomials(left, right, false, term_limit)
         }
         BaseExpr::Sub(left, right) => {
-            let left = normalize_base_polynomial(left, variable_names, term_limit)?;
-            let right = normalize_base_polynomial(right, variable_names, term_limit)?;
+            let left =
+                normalize_base_polynomial_bounded(left, variable_names, term_limit, child_depth)?;
+            let right =
+                normalize_base_polynomial_bounded(right, variable_names, term_limit, child_depth)?;
             add_base_polynomials(left, right, true, term_limit)
         }
         BaseExpr::Mul(left, right) => {
-            let left = normalize_base_polynomial(left, variable_names, term_limit)?;
-            let right = normalize_base_polynomial(right, variable_names, term_limit)?;
+            let left =
+                normalize_base_polynomial_bounded(left, variable_names, term_limit, child_depth)?;
+            let right =
+                normalize_base_polynomial_bounded(right, variable_names, term_limit, child_depth)?;
             multiply_base_polynomials(&left, &right, term_limit)
         }
         BaseExpr::Neg(inner) => {
-            let mut polynomial = normalize_base_polynomial(inner, variable_names, term_limit)?;
+            let mut polynomial =
+                normalize_base_polynomial_bounded(inner, variable_names, term_limit, child_depth)?;
             for coefficient in polynomial.values_mut() {
                 *coefficient = -*coefficient;
             }
@@ -291,11 +301,33 @@ fn normalize_ext_polynomial(
     variable_names: &[String],
     term_limit: usize,
 ) -> Result<ExtPolynomial, String> {
+    normalize_ext_polynomial_bounded(
+        expression,
+        variable_names,
+        term_limit,
+        MAX_RELATION_FINGERPRINT_DEPTH,
+    )
+}
+
+fn normalize_ext_polynomial_bounded(
+    expression: &ExtExpr,
+    variable_names: &[String],
+    term_limit: usize,
+    depth_remaining: usize,
+) -> Result<ExtPolynomial, String> {
+    let child_depth = fingerprint_child_depth(depth_remaining)?;
     match expression {
         ExtExpr::SecureCol(coordinates) => {
             let coordinate_polynomials = coordinates
                 .iter()
-                .map(|coordinate| normalize_base_polynomial(coordinate, variable_names, term_limit))
+                .map(|coordinate| {
+                    normalize_base_polynomial_bounded(
+                        coordinate,
+                        variable_names,
+                        term_limit,
+                        child_depth,
+                    )
+                })
                 .collect::<Result<Vec<_>, _>>()?;
             let mut polynomial = ExtPolynomial::new();
             for coordinate_polynomial in &coordinate_polynomials {
@@ -319,22 +351,29 @@ fn normalize_ext_polynomial(
         ExtExpr::Const(value) => Ok(ext_constant(*value, variable_names.len())),
         ExtExpr::Param(name) => Err(format!("unexpected extension parameter `{name}`")),
         ExtExpr::Add(left, right) => {
-            let left = normalize_ext_polynomial(left, variable_names, term_limit)?;
-            let right = normalize_ext_polynomial(right, variable_names, term_limit)?;
+            let left =
+                normalize_ext_polynomial_bounded(left, variable_names, term_limit, child_depth)?;
+            let right =
+                normalize_ext_polynomial_bounded(right, variable_names, term_limit, child_depth)?;
             add_ext_polynomials(left, right, false, term_limit)
         }
         ExtExpr::Sub(left, right) => {
-            let left = normalize_ext_polynomial(left, variable_names, term_limit)?;
-            let right = normalize_ext_polynomial(right, variable_names, term_limit)?;
+            let left =
+                normalize_ext_polynomial_bounded(left, variable_names, term_limit, child_depth)?;
+            let right =
+                normalize_ext_polynomial_bounded(right, variable_names, term_limit, child_depth)?;
             add_ext_polynomials(left, right, true, term_limit)
         }
         ExtExpr::Mul(left, right) => {
-            let left = normalize_ext_polynomial(left, variable_names, term_limit)?;
-            let right = normalize_ext_polynomial(right, variable_names, term_limit)?;
+            let left =
+                normalize_ext_polynomial_bounded(left, variable_names, term_limit, child_depth)?;
+            let right =
+                normalize_ext_polynomial_bounded(right, variable_names, term_limit, child_depth)?;
             multiply_ext_polynomials(&left, &right, term_limit)
         }
         ExtExpr::Neg(inner) => {
-            let mut polynomial = normalize_ext_polynomial(inner, variable_names, term_limit)?;
+            let mut polynomial =
+                normalize_ext_polynomial_bounded(inner, variable_names, term_limit, child_depth)?;
             for coefficient in polynomial.values_mut() {
                 *coefficient = -*coefficient;
             }
@@ -430,6 +469,14 @@ fn enforce_term_limit(term_count: usize, term_limit: usize) -> Result<(), String
         ));
     }
     Ok(())
+}
+
+fn fingerprint_child_depth(depth_remaining: usize) -> Result<usize, String> {
+    depth_remaining.checked_sub(1).ok_or_else(|| {
+        format!(
+            "relation fingerprint expression exceeded depth limit {MAX_RELATION_FINGERPRINT_DEPTH}"
+        )
+    })
 }
 
 fn multiply_monomials(left: &Monomial, right: &Monomial) -> Result<Monomial, String> {
@@ -623,6 +670,24 @@ mod tests {
         assert_eq!(
             normalize_ext_polynomial(&expression, &variables, 2).unwrap_err(),
             "relation fingerprint exceeded 2 polynomial terms"
+        );
+    }
+
+    #[test]
+    fn polynomial_normalization_enforces_the_depth_limit() {
+        let mut expression = BaseExpr::Param("x".into());
+        for _ in 0..MAX_RELATION_FINGERPRINT_DEPTH {
+            expression = BaseExpr::Neg(Box::new(expression));
+        }
+        assert_eq!(
+            normalize_base_polynomial_bounded(
+                &expression,
+                &["x".into()],
+                MAX_RELATION_FINGERPRINT_TERMS,
+                MAX_RELATION_FINGERPRINT_DEPTH,
+            )
+            .unwrap_err(),
+            "relation fingerprint expression exceeded depth limit 128"
         );
     }
 }
