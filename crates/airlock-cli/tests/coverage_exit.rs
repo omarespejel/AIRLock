@@ -35,3 +35,19 @@ fn default_coverage_passes_when_every_listed_surface_is_covered() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+#[test]
+fn explicit_covered_subset_passes_when_another_surface_is_incomplete() {
+    let output = Command::new(env!("CARGO_BIN_EXE_airlock"))
+        .args(["coverage", "--manifest"])
+        .arg(fixture("incomplete.yaml"))
+        .args(["--require", "component-a"])
+        .output()
+        .expect("run airlock coverage");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
