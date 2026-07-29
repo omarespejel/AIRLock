@@ -54,9 +54,11 @@ Before semantic analysis, the generic linter also requires:
   declared content hash;
 - formal roles to match availability phases, and every relation input to be
   available strictly before that relation's challenge phase;
-- every entry sharing a relation name to agree on arity and challenge phase;
-- semantic-contract inputs and outputs to resolve exactly to typed public
-  declarations, with every public declaration listed in the contract; and
+- every entry sharing a relation name, including across components, to agree on
+  arity and challenge phase;
+- semantic-contract inputs, claims, and outputs to resolve exactly to typed
+  public declarations, with every public declaration listed in the contract;
+  and
 - integer obligations to have unique names and undecomposed biased encoders to
   fit injectively in one M31 cell, with admitted bounds representable on both
   sides of zero.
@@ -71,7 +73,7 @@ means a future resolver must regenerate the values and verify that hash.
 merges semantic annotations (preprocessed values, row support, roles). Export
 rewrites known preprocessed `Param`s to `Column` ids, requires relation
 annotations, and retains full `SecureCol` / QM31 `Const` limbs (AuditIR schema
-`0.3.0`).
+`0.4.0`).
 
 Requires sibling Stwo `../stwo` whose dependency trees match upstream baseline
 `f0d79b0f…`, plus the exact checked

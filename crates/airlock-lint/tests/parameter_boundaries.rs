@@ -605,6 +605,36 @@ fn duplicate_component_names_fail_at_manifest_boundary() {
 }
 
 #[test]
+fn relation_identity_is_consistent_across_components() {
+    let first = valid_component();
+    let mut compatible = valid_component();
+    compatible.name = "compatible".into();
+    compatible.relations[0].role = RelationRole::Query;
+    let findings = lint_manifest(
+        &AuditManifest::new("test", vec![first.clone(), compatible]),
+        &LintOptions::default(),
+    );
+    assert!(
+        !findings
+            .iter()
+            .any(|finding| finding.message.contains("conflicting with arity"))
+    );
+
+    let mut incompatible = valid_component();
+    incompatible.name = "incompatible".into();
+    incompatible.relations[0].tuple.push(BaseExpr::constant(0));
+    let findings = lint_manifest(
+        &AuditManifest::new("test", vec![first, incompatible]),
+        &LintOptions::default(),
+    );
+    assert!(
+        findings
+            .iter()
+            .any(|finding| finding.message.contains("conflicting with arity"))
+    );
+}
+
+#[test]
 fn semantic_contract_names_are_total_typed_and_unambiguous() {
     let mut valid = valid_component();
     valid.parameters.push(ParameterDecl {
@@ -613,8 +643,24 @@ fn semantic_contract_names_are_total_typed_and_unambiguous() {
         role: ParameterRole::PublicInput,
         available_after: CommitmentPhase::Phase0Public,
     });
+    valid.parameters.push(ParameterDecl {
+        name: "receipt_claim".into(),
+        field: airlock_ir::FieldSort::Qm31,
+        role: ParameterRole::PublicClaim,
+        available_after: CommitmentPhase::Phase0Public,
+    });
     valid.relations[0].tuple[0] = BaseExpr::param("statement_input");
+    valid.constraints.push(ConstraintDecl {
+        id: "bind-receipt-claim".into(),
+        expression: ExtExpr::Param {
+            name: "receipt_claim".into(),
+        },
+        row_support: RowSupport::All,
+        source_location: None,
+        semantic_claim: None,
+    });
     valid.contract.public_inputs = vec!["statement_input".into()];
+    valid.contract.public_claims = vec!["receipt_claim".into()];
     valid.columns[1].semantic_type = SemanticType::PublicOutput;
     valid.contract.public_outputs = vec!["multiplicity".into()];
     assert!(
@@ -692,6 +738,31 @@ fn semantic_contract_names_are_total_typed_and_unambiguous() {
                 .contains("public output `missing` must resolve"))
     );
 
+    let mut missing_claim = valid_component();
+    missing_claim.contract.public_claims = vec!["missing".into()];
+    assert!(
+        lint_component_structure(&missing_claim)
+            .iter()
+            .any(|finding| finding
+                .message
+                .contains("public claim `missing` must resolve"))
+    );
+
+    let mut omitted_claim = valid_component();
+    omitted_claim.parameters.push(ParameterDecl {
+        name: "receipt_claim".into(),
+        field: airlock_ir::FieldSort::Qm31,
+        role: ParameterRole::PublicClaim,
+        available_after: CommitmentPhase::Phase0Public,
+    });
+    assert!(
+        lint_component_structure(&omitted_claim)
+            .iter()
+            .any(|finding| finding
+                .message
+                .contains("PublicClaim parameter `receipt_claim` is omitted"))
+    );
+
     let mut wrong_output_type = valid_component();
     wrong_output_type.contract.public_outputs = vec!["multiplicity".into()];
     assert!(
@@ -733,7 +804,7 @@ fn semantic_contract_names_are_total_typed_and_unambiguous() {
     assert!(
         lint_component_structure(&overlapping)
             .iter()
-            .any(|finding| finding.message.contains("both an input and an output"))
+            .any(|finding| finding.message.contains("both inputs and outputs"))
     );
 }
 

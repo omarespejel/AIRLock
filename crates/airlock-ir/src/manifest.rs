@@ -343,6 +343,9 @@ pub struct SemanticContract {
     /// Public inputs by `ParameterDecl::name` or `ColumnDecl::id`.
     #[serde(default)]
     pub public_inputs: Vec<String>,
+    /// Public claims by `ParameterDecl::name`.
+    #[serde(default)]
+    pub public_claims: Vec<String>,
     /// Public outputs by `ColumnDecl::id`.
     #[serde(default)]
     pub public_outputs: Vec<String>,
@@ -364,6 +367,7 @@ impl Default for SemanticContract {
     fn default() -> Self {
         Self {
             public_inputs: Vec::new(),
+            public_claims: Vec::new(),
             public_outputs: Vec::new(),
             integer_obligations: Vec::new(),
             assumptions: Vec::new(),

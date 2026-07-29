@@ -286,6 +286,7 @@ fn annotations(vulnerable: bool) -> ExportAnnotations {
             "silu-table-fixed".into()
         },
         contract: SemanticContract {
+            public_claims: vec!["claimed_sum".into()],
             reference_semantics_id: Some("q8-silu-table-v1".into()),
             assumptions: vec![
                 "LogUp acceptance implies exact multiset balance under separately stated assumptions"
@@ -369,6 +370,10 @@ fn exported_constraints_inline_generated_intermediates() {
     assert_eq!(claimed_sum.field, FieldSort::Qm31);
     assert_eq!(claimed_sum.role, ParameterRole::PublicClaim);
     assert_eq!(claimed_sum.available_after, CommitmentPhase::Phase0Public);
+    assert_eq!(
+        manifest.components[0].contract.public_claims,
+        vec!["claimed_sum".to_string()]
+    );
 
     for challenge in manifest.components[0]
         .parameters

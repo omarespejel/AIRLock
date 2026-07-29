@@ -381,14 +381,26 @@ fn validate_semantic_contract(component: &ComponentManifest, findings: &mut Vec<
         &component.contract.public_outputs,
         findings,
     );
+    let public_claims = validate_contract_names(
+        component,
+        "public claim",
+        &component.contract.public_claims,
+        findings,
+    );
 
-    for name in public_inputs.intersection(&public_outputs) {
-        findings.push(structure_finding(
-            component,
-            FindingCode::InvalidManifestStructure,
-            format!("public value `{name}` is declared as both an input and an output"),
-            vec![name.to_string()],
-        ));
+    for (left_label, left, right_label, right) in [
+        ("inputs", &public_inputs, "claims", &public_claims),
+        ("inputs", &public_inputs, "outputs", &public_outputs),
+        ("claims", &public_claims, "outputs", &public_outputs),
+    ] {
+        for name in left.intersection(right) {
+            findings.push(structure_finding(
+                component,
+                FindingCode::InvalidManifestStructure,
+                format!("public value `{name}` appears in both {left_label} and {right_label}"),
+                vec![name.to_string()],
+            ));
+        }
     }
 
     for name in &public_inputs {
@@ -438,16 +450,37 @@ fn validate_semantic_contract(component: &ComponentManifest, findings: &mut Vec<
         }
     }
 
+    for name in &public_claims {
+        let matching_parameters = component
+            .parameters
+            .iter()
+            .filter(|parameter| {
+                parameter.name == *name && parameter.role == ParameterRole::PublicClaim
+            })
+            .count();
+        if matching_parameters != 1 {
+            findings.push(structure_finding(
+                component,
+                FindingCode::InvalidManifestStructure,
+                format!("public claim `{name}` must resolve to exactly one PublicClaim parameter"),
+                vec![name.to_string()],
+            ));
+        }
+    }
+
     for parameter in &component.parameters {
-        if parameter.role == ParameterRole::PublicInput
-            && !public_inputs.contains(parameter.name.as_str())
-        {
+        let (contract_names, label) = match parameter.role {
+            ParameterRole::PublicInput => (&public_inputs, "PublicInput"),
+            ParameterRole::PublicClaim => (&public_claims, "PublicClaim"),
+            _ => continue,
+        };
+        if !contract_names.contains(parameter.name.as_str()) {
             findings.push(structure_finding(
                 component,
                 FindingCode::InvalidManifestStructure,
                 format!(
-                    "PublicInput parameter `{}` is omitted from the semantic contract",
-                    parameter.name
+                    "{label} parameter `{}` is omitted from the semantic contract",
+                    parameter.name,
                 ),
                 vec![parameter.name.clone()],
             ));

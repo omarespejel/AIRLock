@@ -13,7 +13,7 @@ fn m31_prime_is_correct() {
 #[test]
 fn schema_identity_stable() {
     assert_eq!(IR_SCHEMA_ID, "airlock.audit-ir");
-    assert_eq!(IR_SCHEMA_VERSION, "0.3.0");
+    assert_eq!(IR_SCHEMA_VERSION, "0.4.0");
 }
 
 #[test]
