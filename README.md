@@ -17,7 +17,7 @@ or that a green AIRLock report establishes whole-system STARK security.
 | AuditIR schema (`airlock-ir`) | landed |
 | Static gate (`airlock-lint`) | schema/shape + parameter/phase closure + preprocessed integrity + Q8 support/functionality + encoder bound + LogUp finalize |
 | Verifier boundary contracts (`airlock-boundary`) | proof-neutral request/supply/consumption and typed transcript oracles |
-| Pinned Stwo adapter (`airlock-stwo`) | real demo proof, verifier-derived OODS requests, sample-only mutations, raw-PCS/framework replay |
+| Pinned Stwo adapter (`airlock-stwo`) | real demo proof, verifier-derived OODS requests, sample-only mutations, raw-PCS/framework replay, subprocess containment, verified replay bundles |
 | CLI (`airlock`) | `air`, `coverage`, `schema` |
 | Stwo `AuditEvaluator` exporter | landed (`airlock-export`); needs RelationEntry accessors — see `docs/STWO_PATCH.md` |
 | cvc5 / Lean / phase injection | later PRs |
@@ -72,6 +72,12 @@ replay. Solver/Lean tracks remain separate lanes.
 - A green transcript report establishes only the declared event-order and
   validation prerequisites, exact PoW configuration, and query shape over one
   complete typed trace. It does not establish Fiat--Shamir or FRI security.
+- Stwo replay containment supplies a parent-owned deadline and bounded I/O. It
+  is not an operating-system sandbox or a resource-isolation boundary.
+- Replay-bundle checksums establish deterministic internal consistency within
+  the demo verifier-boundary lane. They do not cover the separate evidence and
+  provenance lane or authenticate who produced a bundle. External publication
+  must pin or sign the bundle digest separately.
 - `UNKNOWN` / timeout / `UNSUPPORTED` are never green.
 - Release status stays `BLOCKED` until all paper-relevant lanes are covered.
 

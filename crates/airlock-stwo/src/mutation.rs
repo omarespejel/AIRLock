@@ -8,7 +8,7 @@ use thiserror::Error;
 
 use crate::DemoProof;
 
-/// A mutated proof paired with replayable, content-addressed evidence.
+/// A mutated proof paired with replayable, content-addressed record.
 #[derive(Debug)]
 pub struct MutatedProof {
     /// Mutated concrete proof.
@@ -208,7 +208,7 @@ fn apply_secure_field(
     Ok(())
 }
 
-/// Mutation failures are evidence failures, never green boundary results.
+/// Mutation failures are record failures, never green boundary results.
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum StwoMutationError {
     /// No operation was supplied.

@@ -73,6 +73,64 @@ pub struct DifferentialReplay {
     pub verdict: DifferentialVerdict,
 }
 
+impl DifferentialReplay {
+    /// Recompute every proof-neutral report and cross-layer classification.
+    pub fn validate(&self) -> Result<(), StwoBoundaryError> {
+        self.contract
+            .validate()
+            .map_err(|error| StwoBoundaryError::ReplayValidation(error.to_string()))?;
+        if self.contract.target != STWO_DEMO_TARGET
+            || self.contract.upstream_commit != STWO_SOURCE_ID
+        {
+            return Err(StwoBoundaryError::ReplayValidation(
+                "replay contract is not bound to the pinned demo target and source".to_owned(),
+            ));
+        }
+
+        for (expected_layer, layer) in [("raw_pcs", &self.raw_pcs), ("framework", &self.framework)]
+        {
+            layer
+                .observation
+                .validate()
+                .map_err(|error| StwoBoundaryError::ReplayValidation(error.to_string()))?;
+            if layer.observation.layer != expected_layer
+                || layer.observation.target != self.contract.target
+                || layer.observation.upstream_commit != self.contract.upstream_commit
+            {
+                return Err(StwoBoundaryError::ReplayValidation(format!(
+                    "{expected_layer} observation identity does not match its contract"
+                )));
+            }
+            let recomputed = evaluate_boundary(&self.contract, &layer.observation);
+            if recomputed != layer.report {
+                return Err(StwoBoundaryError::ReplayValidation(format!(
+                    "{expected_layer} report does not match its observation"
+                )));
+            }
+        }
+        if self.raw_pcs.observation.case_id != self.framework.observation.case_id
+            || self.raw_pcs.observation.case_kind != self.framework.observation.case_kind
+            || self.raw_pcs.observation.mutation != self.framework.observation.mutation
+        {
+            return Err(StwoBoundaryError::ReplayValidation(
+                "raw PCS and framework observations describe different cases".to_owned(),
+            ));
+        }
+        let expected = classify(
+            self.raw_pcs.observation.case_kind,
+            &self.raw_pcs.report,
+            &self.framework.report,
+        );
+        if self.verdict != expected {
+            return Err(StwoBoundaryError::ReplayValidation(format!(
+                "stored differential verdict {:?} does not match recomputed verdict {:?}",
+                self.verdict, expected
+            )));
+        }
+        Ok(())
+    }
+}
+
 /// Executable adapter over one deterministic real Stwo component.
 pub struct StwoBoundaryAdapter {
     source_id: String,
@@ -187,9 +245,9 @@ impl StwoBoundaryAdapter {
             framework_outcome,
         );
         let framework_report = evaluate_boundary(&contract, &framework_observation);
-        let verdict = classify(&raw_report, &framework_report);
+        let verdict = classify(case_kind, &raw_report, &framework_report);
 
-        Ok(DifferentialReplay {
+        let replay = DifferentialReplay {
             contract,
             raw_pcs: LayerReplay {
                 observation: raw_observation,
@@ -200,7 +258,9 @@ impl StwoBoundaryAdapter {
                 report: framework_report,
             },
             verdict,
-        })
+        };
+        replay.validate()?;
+        Ok(replay)
     }
 }
 
@@ -398,7 +458,11 @@ fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
         .unwrap_or_else(|| "non-string panic payload".to_owned())
 }
 
-fn classify(raw: &BoundaryReport, framework: &BoundaryReport) -> DifferentialVerdict {
+fn classify(
+    case_kind: CaseKind,
+    raw: &BoundaryReport,
+    framework: &BoundaryReport,
+) -> DifferentialVerdict {
     use BoundaryVerdict as B;
 
     if matches!(raw.verdict, B::Unsupported) || matches!(framework.verdict, B::Unsupported) {
@@ -413,13 +477,16 @@ fn classify(raw: &BoundaryReport, framework: &BoundaryReport) -> DifferentialVer
     if raw.verdict != framework.verdict {
         return DifferentialVerdict::Divergence;
     }
-    match raw.verdict {
-        B::Accepted => DifferentialVerdict::HonestAccepted,
-        B::Rejected => DifferentialVerdict::MutationRejected,
-        B::Counterexample | B::Divergence => DifferentialVerdict::Counterexample,
-        B::Panic => DifferentialVerdict::Panic,
-        B::Timeout => DifferentialVerdict::Timeout,
-        B::Unsupported => DifferentialVerdict::Unsupported,
+    match (case_kind, raw.verdict) {
+        (CaseKind::Honest, B::Accepted) => DifferentialVerdict::HonestAccepted,
+        (CaseKind::Mutated, B::Rejected) => DifferentialVerdict::MutationRejected,
+        (CaseKind::Honest, B::Rejected) | (CaseKind::Mutated, B::Accepted) => {
+            DifferentialVerdict::Counterexample
+        }
+        (_, B::Counterexample | B::Divergence) => DifferentialVerdict::Counterexample,
+        (_, B::Panic) => DifferentialVerdict::Panic,
+        (_, B::Timeout) => DifferentialVerdict::Timeout,
+        (_, B::Unsupported) => DifferentialVerdict::Unsupported,
     }
 }
 
@@ -455,7 +522,7 @@ impl From<VerificationError> for VerifierFailure {
     }
 }
 
-/// Adapter construction, replay, or evidence error.
+/// Adapter construction or replay error.
 #[derive(Debug, Error)]
 pub enum StwoBoundaryError {
     /// Honest proof generation failed.
@@ -476,6 +543,9 @@ pub enum StwoBoundaryError {
     /// Mutation could not be represented or applied.
     #[error(transparent)]
     Mutation(#[from] StwoMutationError),
+    /// Replay record is internally inconsistent or relabeled.
+    #[error("invalid Stwo replay record: {0}")]
+    ReplayValidation(String),
 }
 
 #[cfg(test)]
@@ -535,6 +605,29 @@ mod tests {
         assert_eq!(
             consumed_by_pinned_zip(&requested, &supplied),
             vec![CountAtPath::new(path, 1)]
+        );
+    }
+
+    #[test]
+    fn expected_verdict_is_bound_to_the_case_kind() {
+        let report = |verdict| BoundaryReport {
+            target: STWO_DEMO_TARGET.to_owned(),
+            upstream_commit: STWO_SOURCE_ID.to_owned(),
+            case_id: "case".to_owned(),
+            layer: "layer".to_owned(),
+            verdict,
+            findings: vec![],
+        };
+        let accepted = report(BoundaryVerdict::Accepted);
+        let rejected = report(BoundaryVerdict::Rejected);
+
+        assert_eq!(
+            classify(CaseKind::Honest, &rejected, &rejected),
+            DifferentialVerdict::Counterexample
+        );
+        assert_eq!(
+            classify(CaseKind::Mutated, &accepted, &accepted),
+            DifferentialVerdict::Counterexample
         );
     }
 

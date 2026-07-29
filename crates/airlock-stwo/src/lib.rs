@@ -7,13 +7,26 @@
 
 mod adapter;
 mod fixture;
+mod isolation;
 mod mutation;
+mod replay_bundle;
+mod request;
+mod temp;
 
 pub use adapter::{
     DifferentialReplay, DifferentialVerdict, LayerReplay, StwoBoundaryAdapter, StwoBoundaryError,
 };
 pub use fixture::{DemoComponent, DemoProof, build_demo_fixture};
+pub use isolation::{
+    IsolatedReplayError, IsolatedReplayRecord, ProcessTermination, run_isolated_replay,
+};
 pub use mutation::{MutatedProof, StwoMutationError, mutate_proof, proof_sha256};
+pub use replay_bundle::{
+    ReplayBundleError, ReplayBundleFiles, verify_replay_bundle, write_replay_bundle,
+};
+pub use request::{
+    ReplayCase, ReplayRequest, ReplayRequestError, execute_replay_request, replay_request_sha256,
+};
 
 /// Upstream source commit whose dependency trees are pinned by AIRLock.
 pub const STWO_UPSTREAM_BASELINE: &str = "f0d79b0fad440dcb0aaf1e20470fdbb37993ea2a";
