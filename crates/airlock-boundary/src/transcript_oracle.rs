@@ -54,6 +54,8 @@ pub enum TranscriptFindingCode {
     ZeroPowNoncePolicyViolation,
     /// A proof-of-work event differs from its exact bits, path, or label contract.
     TranscriptPowContractMismatch,
+    /// A declared proof-of-work verification failed.
+    TranscriptPowVerificationFailed,
     /// A transcript nonce absorption is not the exact value accepted by proof-of-work validation.
     TranscriptPowNonceBindingMismatch,
     /// A query draw differs from the exact contracted count or domain.
@@ -621,7 +623,16 @@ fn evaluate_pow_contract(
         ));
         return false;
     }
-    outcome == ValidationOutcome::Passed
+    if outcome == ValidationOutcome::Failed {
+        findings.push(finding(
+            FindingCode::TranscriptPowVerificationFailed,
+            Severity::High,
+            format!("event {index} proof-of-work verification `{label}` failed"),
+            vec![label.to_owned(), format_path(nonce_path)],
+        ));
+        return false;
+    }
+    true
 }
 
 fn evaluate_pow_nonce_absorption(
@@ -962,6 +973,25 @@ mod tests {
         assert_eq!(report.verdict, TranscriptVerdict::Accepted);
         assert!(report.verdict.is_green());
         assert!(report.trace_digest.is_some());
+    }
+
+    #[test]
+    fn unreferenced_failed_pow_is_never_green() {
+        let policy = ZeroPowNoncePolicy::DisallowZeroPow;
+        let mut contract = contract(policy);
+        contract.pow_verifications[0].absorbed_as = None;
+        contract.draws[0].required_pow = None;
+        let mut trace = valid_trace(policy);
+        let TranscriptEvent::VerifyPow { outcome, .. } = &mut trace.events[5] else {
+            panic!("fixture must contain its PoW event at index 5");
+        };
+        *outcome = ValidationOutcome::Failed;
+
+        let report = evaluate_transcript(&contract, &trace);
+        assert_eq!(report.verdict, TranscriptVerdict::Counterexample);
+        assert!(report.findings.iter().any(|finding| {
+            finding.code == TranscriptFindingCode::TranscriptPowVerificationFailed
+        }));
     }
 
     #[test]
