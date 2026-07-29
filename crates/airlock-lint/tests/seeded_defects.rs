@@ -394,3 +394,30 @@ fn preprocessed_contract_rejects_domain_mismatch_and_noncanonical_values() {
             && finding.message.contains("canonical M31")
     }));
 }
+
+#[test]
+fn preprocessed_contract_closes_column_attachment_mapping() {
+    let mut missing = q8_component(false);
+    missing.preprocessed.clear();
+    let findings = lint_component(&missing, &LintOptions::default());
+    assert!(findings.iter().any(|finding| {
+        finding.code == FindingCode::InvalidPreprocessedContract
+            && finding.message.contains("exactly one value or generator")
+    }));
+
+    let mut orphaned = q8_component(false);
+    orphaned.preprocessed[0].id = "orphaned_table".into();
+    let findings = lint_component(&orphaned, &LintOptions::default());
+    assert!(findings.iter().any(|finding| {
+        finding.code == FindingCode::InvalidPreprocessedContract
+            && finding.message.contains("exactly one preprocessed column")
+    }));
+
+    let mut wrong_kind = q8_component(false);
+    wrong_kind.columns[0].kind = ColumnKind::Witness;
+    let findings = lint_component(&wrong_kind, &LintOptions::default());
+    assert!(findings.iter().any(|finding| {
+        finding.code == FindingCode::InvalidPreprocessedContract
+            && finding.message.contains("exactly one preprocessed column")
+    }));
+}

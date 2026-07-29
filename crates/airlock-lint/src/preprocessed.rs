@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use airlock_ir::{ComponentManifest, Finding, FindingCode, Severity};
+use airlock_ir::{ColumnKind, ComponentManifest, Finding, FindingCode, Severity};
 
 /// Reject preprocessed declarations whose shape or concrete values are not
 /// bound to the component domain and their canonical content hash.
@@ -37,6 +37,22 @@ pub fn lint_preprocessed_contract(component: &ComponentManifest) -> Vec<Finding>
                 format!(
                     "preprocessed `{}` semantic_length {} exceeds physical_length {}",
                     preprocessed.id, preprocessed.semantic_length, preprocessed.physical_length
+                ),
+                vec![preprocessed.id.clone()],
+            ));
+        }
+
+        let matching_columns: Vec<_> = component
+            .columns
+            .iter()
+            .filter(|column| column.id == preprocessed.id)
+            .collect();
+        if matching_columns.len() != 1 || matching_columns[0].kind != ColumnKind::Preprocessed {
+            findings.push(preprocessed_finding(
+                component,
+                format!(
+                    "preprocessed `{}` must resolve to exactly one preprocessed column declaration",
+                    preprocessed.id
                 ),
                 vec![preprocessed.id.clone()],
             ));
@@ -111,6 +127,28 @@ pub fn lint_preprocessed_contract(component: &ComponentManifest) -> Vec<Finding>
                     ));
                 }
             }
+        }
+    }
+
+    for column in component
+        .columns
+        .iter()
+        .filter(|column| column.kind == ColumnKind::Preprocessed)
+    {
+        let attachment_count = component
+            .preprocessed
+            .iter()
+            .filter(|preprocessed| preprocessed.id == column.id)
+            .count();
+        if attachment_count != 1 {
+            findings.push(preprocessed_finding(
+                component,
+                format!(
+                    "preprocessed column `{}` must have exactly one value or generator declaration",
+                    column.id
+                ),
+                vec![column.id.clone()],
+            ));
         }
     }
 
