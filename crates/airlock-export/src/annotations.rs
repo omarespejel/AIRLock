@@ -5,6 +5,7 @@ use airlock_ir::{
     SemanticContract, SemanticType,
 };
 use indexmap::IndexMap;
+use stwo::core::fields::qm31::SecureField;
 
 /// Annotations that cannot be recovered from `FrameworkEval` alone.
 #[derive(Clone, Debug)]
@@ -69,7 +70,27 @@ pub struct RelationAnnotation {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RelationCompression {
     /// Stwo's `LookupElements`: `x_0 + alpha*x_1 + ... - z`.
-    StwoLookupElements,
+    ///
+    /// The reference values must be the concrete challenges held by the
+    /// `FrameworkEval` instance being exported. They are used only to verify
+    /// that its `Relation::combine` implementation matches the symbolic
+    /// reconstruction; the exported AuditIR still uses formal parameters.
+    StwoLookupElements {
+        /// Concrete `z` challenge in Stwo coordinate order.
+        z: [u32; 4],
+        /// Concrete `alpha` challenge in Stwo coordinate order.
+        alpha: [u32; 4],
+    },
+}
+
+impl RelationCompression {
+    /// Declare the concrete challenges used by Stwo's `LookupElements`.
+    pub fn stwo_lookup_elements(z: SecureField, alpha: SecureField) -> Self {
+        Self::StwoLookupElements {
+            z: z.to_m31_array().map(|value| value.0),
+            alpha: alpha.to_m31_array().map(|value| value.0),
+        }
+    }
 }
 
 /// Preprocessed column values + lengths for linting.

@@ -14,6 +14,7 @@ use airlock_ir::{
 use airlock_lint::{LintOptions, lint_manifest};
 use num_traits::One;
 use stwo::core::Fraction;
+use stwo_constraint_framework::logup::LookupElements;
 use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
 use stwo_constraint_framework::{EvalAtRow, FrameworkEval, RelationEntry, relation};
 
@@ -238,6 +239,7 @@ fn table_values() -> (Vec<u32>, Vec<u32>) {
 
 fn annotations(vulnerable: bool) -> ExportAnnotations {
     let (codes, silus) = table_values();
+    let lookup = LookupElements::<2>::dummy();
     let row_support = if vulnerable {
         RowSupport::All
     } else {
@@ -250,7 +252,7 @@ fn annotations(vulnerable: bool) -> ExportAnnotations {
     relations.insert(
         "SiLU".into(),
         RelationAnnotation {
-            compression: RelationCompression::StwoLookupElements,
+            compression: RelationCompression::stwo_lookup_elements(lookup.z, lookup.alpha),
             role: RelationRole::Table,
             row_support,
             challenge_phase: CommitmentPhase::Phase2Interaction,

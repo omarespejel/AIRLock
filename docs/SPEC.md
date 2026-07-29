@@ -111,13 +111,15 @@ parameters require explicit annotations. A relation is represented with one
 Fiat--Shamir `alpha` and explicit powers `1, alpha, alpha^2, ...`, matching
 Stwo's `LookupElements`, rather than treating each power as independent.
 Export requires an explicit `StwoLookupElements` compression annotation and
-symbolically fingerprints the relation's concrete `combine` implementation.
-It rejects zero-arity, nonlinear, cross-term, reordered, non-geometric, or
-otherwise unsupported compression instead of silently reinterpreting it. The
-annotation remains the trusted statement that those coefficients come from the
-named Fiat--Shamir challenges; arbitrary custom relation protocols are outside
-this covered surface. The required build pin is not presented as observed
-manifest provenance.
+the concrete `z` and `alpha` values held by the exported `FrameworkEval`.
+AIRLock symbolically fingerprints the relation's concrete `combine`
+implementation and checks the exact constant `-z` and coefficients
+`1, alpha, alpha^2, ...`. It rejects zero-arity, nonlinear, cross-term,
+reordered, non-geometric, challenge-mismatched, or oversized compression
+instead of silently reinterpreting it. Deriving those concrete values from the
+Fiat--Shamir transcript remains outside this exporter-faithfulness lane;
+arbitrary custom relation protocols are also unsupported. The required build
+pin is not presented as observed manifest provenance.
 
 ## Static findings (v0)
 

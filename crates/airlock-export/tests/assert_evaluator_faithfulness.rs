@@ -31,6 +31,11 @@ const DOMAIN_SIZE: usize = 1 << LOG_SIZE;
 
 relation!(AuditPair, 2);
 
+fn dummy_lookup_compression<const N: usize>() -> RelationCompression {
+    let lookup = LookupElements::<N>::dummy();
+    RelationCompression::stwo_lookup_elements(lookup.z, lookup.alpha)
+}
+
 #[derive(Clone, Copy)]
 struct CrossInteractionAir;
 
@@ -85,7 +90,9 @@ struct NonGeometricRelation;
 
 impl<F: Clone, EF: RelationEFTraitBound<F>> Relation<F, EF> for NonGeometricRelation {
     fn combine(&self, values: &[F]) -> EF {
-        EF::from(values[0].clone()) + EF::from(values[0].clone()) * values[1].clone()
+        let affine: EF = LookupElements::<2>::dummy().combine(values);
+        let cross_term = EF::from(values[0].clone()) * values[1].clone();
+        affine - (EF::zero() - cross_term)
     }
 
     fn get_name(&self) -> &str {
@@ -113,6 +120,53 @@ impl FrameworkEval for NonGeometricRelationAir {
         let [left, right] = eval.next_interaction_mask(ORIGINAL_TRACE_IDX, [0, 0]);
         eval.add_to_relation(RelationEntry::new(
             &NonGeometricRelation,
+            E::EF::one(),
+            &[left, right],
+        ));
+        eval.finalize_logup();
+        eval
+    }
+}
+
+#[derive(Clone, Copy)]
+struct MissingZRelation;
+
+impl<F: Clone, EF: RelationEFTraitBound<F>> Relation<F, EF> for MissingZRelation {
+    fn combine(&self, values: &[F]) -> EF {
+        let dummy = LookupElements::<2>::dummy();
+        LookupElements {
+            z: SecureField::zero(),
+            alpha: dummy.alpha,
+            alpha_powers: dummy.alpha_powers,
+        }
+        .combine(values)
+    }
+
+    fn get_name(&self) -> &str {
+        "MissingZ"
+    }
+
+    fn get_size(&self) -> usize {
+        2
+    }
+}
+
+#[derive(Clone, Copy)]
+struct MissingZRelationAir;
+
+impl FrameworkEval for MissingZRelationAir {
+    fn log_size(&self) -> u32 {
+        LOG_SIZE
+    }
+
+    fn max_constraint_log_degree_bound(&self) -> u32 {
+        LOG_SIZE + 1
+    }
+
+    fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
+        let [left, right] = eval.next_interaction_mask(ORIGINAL_TRACE_IDX, [0, 0]);
+        eval.add_to_relation(RelationEntry::new(
+            &MissingZRelation,
             E::EF::one(),
             &[left, right],
         ));
@@ -374,7 +428,7 @@ fn exported_relations_match_relation_tracker_row_for_row() {
     annotations.relations.insert(
         "AuditPair".into(),
         RelationAnnotation {
-            compression: RelationCompression::StwoLookupElements,
+            compression: dummy_lookup_compression::<2>(),
             role: RelationRole::Query,
             row_support: RowSupport::All,
             challenge_phase: CommitmentPhase::Phase2Interaction,
@@ -426,7 +480,7 @@ fn exporter_rejects_custom_relation_compression_mislabeled_as_lookup_elements() 
     annotations.relations.insert(
         "NonGeometric".into(),
         RelationAnnotation {
-            compression: RelationCompression::StwoLookupElements,
+            compression: dummy_lookup_compression::<2>(),
             role: RelationRole::Query,
             row_support: RowSupport::All,
             challenge_phase: CommitmentPhase::Phase2Interaction,
@@ -444,13 +498,61 @@ fn exporter_rejects_custom_relation_compression_mislabeled_as_lookup_elements() 
 }
 
 #[test]
+fn exporter_rejects_relation_compression_that_omits_the_declared_z_challenge() {
+    let mut annotations = default_annotations("missing-z-relation");
+    annotations.relations.insert(
+        "MissingZ".into(),
+        RelationAnnotation {
+            compression: dummy_lookup_compression::<2>(),
+            role: RelationRole::Query,
+            row_support: RowSupport::All,
+            challenge_phase: CommitmentPhase::Phase2Interaction,
+        },
+    );
+
+    let error = export_component(&MissingZRelationAir, annotations)
+        .expect_err("missing z term must fail closed");
+    assert!(
+        error.to_string().contains("the constant coefficient is"),
+        "{error}"
+    );
+    assert!(error.to_string().contains("expected -z"), "{error}");
+}
+
+#[test]
+fn exporter_rejects_relation_compression_with_the_wrong_alpha_reference() {
+    let lookup = LookupElements::<2>::dummy();
+    let mut annotations = default_annotations("wrong-alpha-reference");
+    annotations.relations.insert(
+        "AuditPair".into(),
+        RelationAnnotation {
+            compression: RelationCompression::stwo_lookup_elements(
+                lookup.z,
+                SecureField::from_u32_unchecked(5, 3, 2, 1),
+            ),
+            role: RelationRole::Query,
+            row_support: RowSupport::All,
+            challenge_phase: CommitmentPhase::Phase2Interaction,
+        },
+    );
+
+    let error =
+        export_component(&RelationAir, annotations).expect_err("wrong alpha must fail closed");
+    assert!(
+        error.to_string().contains("tuple coefficient 1 is"),
+        "{error}"
+    );
+    assert!(error.to_string().contains("expected alpha^1"), "{error}");
+}
+
+#[test]
 fn audit_ir_logup_lowering_accepts_native_trace_and_rejects_every_cell_mutation() {
     let air = RelationAir;
     let mut annotations = default_annotations("logup-lowering");
     annotations.relations.insert(
         "AuditPair".into(),
         RelationAnnotation {
-            compression: RelationCompression::StwoLookupElements,
+            compression: dummy_lookup_compression::<2>(),
             role: RelationRole::Query,
             row_support: RowSupport::All,
             challenge_phase: CommitmentPhase::Phase2Interaction,
@@ -596,7 +698,7 @@ fn relation_parameters_are_required_even_for_uncompressed_entry_evaluation() {
     annotations.relations.insert(
         "AuditPair".into(),
         RelationAnnotation {
-            compression: RelationCompression::StwoLookupElements,
+            compression: dummy_lookup_compression::<2>(),
             role: RelationRole::Query,
             row_support: RowSupport::All,
             challenge_phase: CommitmentPhase::Phase2Interaction,

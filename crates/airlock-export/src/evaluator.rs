@@ -3,6 +3,7 @@
 use std::any::type_name;
 use std::collections::BTreeMap;
 
+use airlock_ir::M31_P;
 use num_traits::{One, Zero};
 use stwo::core::Fraction;
 use stwo::core::fields::FieldExpOps;
@@ -118,8 +119,8 @@ impl AuditEvaluator {
             ));
         }
         match self.relation_compressions.get(relation.get_name()).copied() {
-            Some(RelationCompression::StwoLookupElements) => {
-                if let Err(error) = verify_stwo_lookup_shape(relation, values.len()) {
+            Some(RelationCompression::StwoLookupElements { z, alpha }) => {
+                if let Err(error) = verify_stwo_lookup_shape(relation, values.len(), z, alpha) {
                     self.structural_errors.push(format!(
                         "relation `{}` does not match its declared StwoLookupElements compression: {error}",
                         relation.get_name()
@@ -166,10 +167,14 @@ type ExtPolynomial = BTreeMap<Monomial, SecureField>;
 fn verify_stwo_lookup_shape<R: Relation<BaseExpr, ExtExpr>>(
     relation: &R,
     arity: usize,
+    z_limbs: [u32; 4],
+    alpha_limbs: [u32; 4],
 ) -> Result<(), String> {
     if arity == 0 {
         return Err("zero-arity relations are unsupported".into());
     }
+    let z = secure_from_reference("z", z_limbs)?;
+    let alpha = secure_from_reference("alpha", alpha_limbs)?;
     let variable_names: Vec<String> = (0..arity)
         .map(|index| format!("__airlock_relation_value_{index}"))
         .collect();
@@ -184,7 +189,18 @@ fn verify_stwo_lookup_shape<R: Relation<BaseExpr, ExtExpr>>(
     )?;
     let constant_monomial = vec![0; arity];
     let mut allowed = BTreeMap::new();
-    allowed.insert(constant_monomial, ());
+    allowed.insert(constant_monomial.clone(), ());
+
+    let constant = polynomial
+        .get(&constant_monomial)
+        .copied()
+        .unwrap_or_else(SecureField::zero);
+    let expected_constant = -z;
+    if constant != expected_constant {
+        return Err(format!(
+            "the constant coefficient is {constant:?}, expected -z = {expected_constant:?}"
+        ));
+    }
 
     let coefficients: Vec<SecureField> = (0..arity)
         .map(|index| {
@@ -197,21 +213,12 @@ fn verify_stwo_lookup_shape<R: Relation<BaseExpr, ExtExpr>>(
                 .unwrap_or_else(SecureField::zero)
         })
         .collect();
-    if coefficients[0] != SecureField::one() {
-        return Err(format!(
-            "the first tuple coefficient is {:?}, expected one",
-            coefficients[0]
-        ));
-    }
-    if arity > 1 {
-        let alpha = coefficients[1];
-        for (index, coefficient) in coefficients.iter().enumerate() {
-            let expected = alpha.pow(index as u128);
-            if *coefficient != expected {
-                return Err(format!(
-                    "tuple coefficient {index} is {coefficient:?}, expected alpha^{index} = {expected:?}"
-                ));
-            }
+    for (index, coefficient) in coefficients.iter().enumerate() {
+        let expected = alpha.pow(index as u128);
+        if *coefficient != expected {
+            return Err(format!(
+                "tuple coefficient {index} is {coefficient:?}, expected alpha^{index} = {expected:?}"
+            ));
         }
     }
     if let Some((monomial, _)) = polynomial
@@ -223,6 +230,15 @@ fn verify_stwo_lookup_shape<R: Relation<BaseExpr, ExtExpr>>(
         ));
     }
     Ok(())
+}
+
+fn secure_from_reference(label: &str, limbs: [u32; 4]) -> Result<SecureField, String> {
+    if let Some(value) = limbs.iter().find(|value| **value >= M31_P) {
+        return Err(format!(
+            "{label} reference contains noncanonical M31 limb {value}"
+        ));
+    }
+    Ok(SecureField::from_m31_array(limbs.map(BaseField::from)))
 }
 
 fn normalize_base_polynomial(
@@ -246,12 +262,12 @@ fn normalize_base_polynomial(
         BaseExpr::Add(left, right) => {
             let left = normalize_base_polynomial(left, variable_names, term_limit)?;
             let right = normalize_base_polynomial(right, variable_names, term_limit)?;
-            add_base_polynomials(left, right, false)
+            add_base_polynomials(left, right, false, term_limit)
         }
         BaseExpr::Sub(left, right) => {
             let left = normalize_base_polynomial(left, variable_names, term_limit)?;
             let right = normalize_base_polynomial(right, variable_names, term_limit)?;
-            add_base_polynomials(left, right, true)
+            add_base_polynomials(left, right, true, term_limit)
         }
         BaseExpr::Mul(left, right) => {
             let left = normalize_base_polynomial(left, variable_names, term_limit)?;
@@ -285,6 +301,7 @@ fn normalize_ext_polynomial(
             for coordinate_polynomial in &coordinate_polynomials {
                 for monomial in coordinate_polynomial.keys() {
                     polynomial.entry(monomial.clone()).or_default();
+                    enforce_term_limit(polynomial.len(), term_limit)?;
                 }
             }
             for (monomial, coefficient) in &mut polynomial {
@@ -304,12 +321,12 @@ fn normalize_ext_polynomial(
         ExtExpr::Add(left, right) => {
             let left = normalize_ext_polynomial(left, variable_names, term_limit)?;
             let right = normalize_ext_polynomial(right, variable_names, term_limit)?;
-            add_ext_polynomials(left, right, false)
+            add_ext_polynomials(left, right, false, term_limit)
         }
         ExtExpr::Sub(left, right) => {
             let left = normalize_ext_polynomial(left, variable_names, term_limit)?;
             let right = normalize_ext_polynomial(right, variable_names, term_limit)?;
-            add_ext_polynomials(left, right, true)
+            add_ext_polynomials(left, right, true, term_limit)
         }
         ExtExpr::Mul(left, right) => {
             let left = normalize_ext_polynomial(left, variable_names, term_limit)?;
@@ -346,10 +363,12 @@ fn add_base_polynomials(
     mut left: BasePolynomial,
     right: BasePolynomial,
     subtract: bool,
+    term_limit: usize,
 ) -> Result<BasePolynomial, String> {
     for (monomial, coefficient) in right {
         let coefficient = if subtract { -coefficient } else { coefficient };
         *left.entry(monomial).or_default() += coefficient;
+        enforce_term_limit(left.len(), term_limit)?;
     }
     left.retain(|_, coefficient| !coefficient.is_zero());
     Ok(left)
@@ -359,10 +378,12 @@ fn add_ext_polynomials(
     mut left: ExtPolynomial,
     right: ExtPolynomial,
     subtract: bool,
+    term_limit: usize,
 ) -> Result<ExtPolynomial, String> {
     for (monomial, coefficient) in right {
         let coefficient = if subtract { -coefficient } else { coefficient };
         *left.entry(monomial).or_default() += coefficient;
+        enforce_term_limit(left.len(), term_limit)?;
     }
     left.retain(|_, coefficient| !coefficient.is_zero());
     Ok(left)
@@ -378,11 +399,7 @@ fn multiply_base_polynomials(
         for (right_monomial, right_coefficient) in right {
             let monomial = multiply_monomials(left_monomial, right_monomial)?;
             *product.entry(monomial).or_default() += *left_coefficient * *right_coefficient;
-            if product.len() > term_limit {
-                return Err(format!(
-                    "relation fingerprint exceeded {term_limit} polynomial terms"
-                ));
-            }
+            enforce_term_limit(product.len(), term_limit)?;
         }
     }
     product.retain(|_, coefficient| !coefficient.is_zero());
@@ -399,15 +416,20 @@ fn multiply_ext_polynomials(
         for (right_monomial, right_coefficient) in right {
             let monomial = multiply_monomials(left_monomial, right_monomial)?;
             *product.entry(monomial).or_default() += *left_coefficient * *right_coefficient;
-            if product.len() > term_limit {
-                return Err(format!(
-                    "relation fingerprint exceeded {term_limit} polynomial terms"
-                ));
-            }
+            enforce_term_limit(product.len(), term_limit)?;
         }
     }
     product.retain(|_, coefficient| !coefficient.is_zero());
     Ok(product)
+}
+
+fn enforce_term_limit(term_count: usize, term_limit: usize) -> Result<(), String> {
+    if term_count > term_limit {
+        return Err(format!(
+            "relation fingerprint exceeded {term_limit} polynomial terms"
+        ));
+    }
+    Ok(())
 }
 
 fn multiply_monomials(left: &Monomial, right: &Monomial) -> Result<Monomial, String> {
@@ -559,5 +581,48 @@ impl EvalAtRow for AuditEvaluator {
 
     fn finalize_logup_in_pairs(&mut self) {
         self.finalize_logup_batched(2);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn additive_polynomial_merges_enforce_the_term_limit() {
+        let left_base = BTreeMap::from([
+            (vec![1, 0, 0], BaseField::one()),
+            (vec![0, 1, 0], BaseField::one()),
+        ]);
+        let right_base = BTreeMap::from([(vec![0, 0, 1], BaseField::one())]);
+        assert_eq!(
+            add_base_polynomials(left_base, right_base, false, 2).unwrap_err(),
+            "relation fingerprint exceeded 2 polynomial terms"
+        );
+
+        let left_ext = BTreeMap::from([
+            (vec![1, 0, 0], SecureField::one()),
+            (vec![0, 1, 0], SecureField::one()),
+        ]);
+        let right_ext = BTreeMap::from([(vec![0, 0, 1], SecureField::one())]);
+        assert_eq!(
+            add_ext_polynomials(left_ext, right_ext, false, 2).unwrap_err(),
+            "relation fingerprint exceeded 2 polynomial terms"
+        );
+    }
+
+    #[test]
+    fn secure_column_union_enforces_the_term_limit() {
+        let expression = ExtExpr::SecureCol([
+            Box::new(BaseExpr::Param("x".into())),
+            Box::new(BaseExpr::Param("y".into())),
+            Box::new(BaseExpr::Param("z".into())),
+            Box::new(BaseExpr::zero()),
+        ]);
+        let variables = vec!["x".into(), "y".into(), "z".into()];
+        assert_eq!(
+            normalize_ext_polynomial(&expression, &variables, 2).unwrap_err(),
+            "relation fingerprint exceeded 2 polynomial terms"
+        );
     }
 }
