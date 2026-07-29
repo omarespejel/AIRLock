@@ -69,6 +69,7 @@ reviews:
     - .gitignore
     - Cargo.toml
     - Cargo.lock
+    - LICENSE
     - rust-toolchain.toml
     - crates/**
     - fixtures/**
