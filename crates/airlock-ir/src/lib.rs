@@ -24,7 +24,10 @@ pub use manifest::{
     RowClass, RowSupport, SemanticContract, SemanticType, SignedEncoding,
 };
 pub use result::{AnalysisLane, Finding, FindingCode, GateReport, LaneStatus, Severity, Verdict};
-pub use schema::{IR_SCHEMA_ID, IR_SCHEMA_VERSION};
+pub use schema::{
+    IR_SCHEMA_ID, IR_SCHEMA_VERSION, STWO_MAX_CIRCLE_DOMAIN_LOG_SIZE,
+    STWO_MIN_CIRCLE_DOMAIN_LOG_SIZE,
+};
 
 /// M31 prime modulus used by Stwo base field.
 pub const M31_P: u32 = (1 << 31) - 1;

@@ -148,6 +148,22 @@ pub enum CommitmentPhase {
     Phase3Reduction,
 }
 
+impl CommitmentPhase {
+    /// Whether `self` is available strictly before `other` begins.
+    pub const fn strictly_precedes(self, other: Self) -> bool {
+        self.rank() < other.rank()
+    }
+
+    const fn rank(self) -> u8 {
+        match self {
+            Self::Phase0Public => 0,
+            Self::Phase1Original => 1,
+            Self::Phase2Interaction => 2,
+            Self::Phase3Reduction => 3,
+        }
+    }
+}
+
 /// Semantic annotation for columns and obligations.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -192,9 +208,10 @@ pub enum SemanticType {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SignedEncoding {
-    /// Centered M31 representatives in `(-(p-1)/2, (p-1)/2]`.
+    /// Centered M31 representatives in `[-(p-1)/2, (p-1)/2]`.
     CenteredM31,
-    /// Explicit bias encoding: `value + bias` in `[0, 2^bits)`.
+    /// Explicit single-M31 bias encoding: `value + bias` in `[0, 2^bits)`.
+    /// Wider decomposed integers require a separate typed encoding.
     BiasedBits {
         /// Bias added before unsigned packing.
         bias: i128,

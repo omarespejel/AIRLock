@@ -1,5 +1,7 @@
 //! Lint orchestration.
 
+use std::collections::BTreeSet;
+
 use airlock_ir::{
     AuditManifest, Finding, FindingCode, IR_SCHEMA_ID, IR_SCHEMA_VERSION, SemanticType, Severity,
 };
@@ -9,6 +11,7 @@ use crate::logup::lint_logup_finalization;
 use crate::lookup::{lint_lookup_functionality, lint_table_multiplicity_support};
 use crate::parameter::lint_parameter_contract;
 use crate::preprocessed::lint_preprocessed_contract;
+use crate::structure::lint_component_structure;
 
 /// Options for the static gate.
 #[derive(Clone, Debug, Default)]
@@ -23,6 +26,7 @@ pub fn lint_component(
     options: &LintOptions,
 ) -> Vec<Finding> {
     let mut findings = Vec::new();
+    findings.extend(lint_component_structure(component));
     findings.extend(lint_preprocessed_contract(component));
     findings.extend(lint_table_multiplicity_support(component));
     findings.extend(lint_lookup_functionality(component));
@@ -63,6 +67,30 @@ pub fn lint_manifest(manifest: &AuditManifest, options: &LintOptions) -> Vec<Fin
             ),
             related: vec![manifest.schema.clone(), manifest.schema_version.clone()],
         });
+    }
+    if manifest.components.is_empty() {
+        findings.push(Finding {
+            code: FindingCode::InvalidManifestStructure,
+            severity: Severity::High,
+            component: None,
+            message: "manifest contains no components to analyze".into(),
+            related: vec![],
+        });
+    }
+    let mut component_names = BTreeSet::new();
+    for component in &manifest.components {
+        if !component_names.insert(component.name.as_str()) {
+            findings.push(Finding {
+                code: FindingCode::InvalidManifestStructure,
+                severity: Severity::High,
+                component: Some(component.name.clone()),
+                message: format!(
+                    "component name `{}` appears more than once in the manifest",
+                    component.name
+                ),
+                related: vec![component.name.clone()],
+            });
+        }
     }
     findings.extend(
         manifest

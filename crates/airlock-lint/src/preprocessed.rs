@@ -90,6 +90,15 @@ pub fn lint_preprocessed_contract(component: &ComponentManifest) -> Vec<Finding>
                         ),
                         vec![preprocessed.id.clone()],
                     ));
+                } else {
+                    findings.push(preprocessed_finding(
+                        component,
+                        format!(
+                            "preprocessed `{}` uses generator `{generator}`, but no registered resolver verified its values and hash",
+                            preprocessed.id
+                        ),
+                        vec![preprocessed.id.clone(), generator.clone()],
+                    ));
                 }
             }
             (Some(values), _) => {

@@ -45,6 +45,8 @@ struct CountedMetadataAir {
     degree_calls: Cell<usize>,
 }
 
+struct UndersizedAir;
+
 impl FrameworkEval for SiluTableAir {
     fn log_size(&self) -> u32 {
         LOG_SIZE
@@ -197,6 +199,20 @@ impl FrameworkEval for CountedMetadataAir {
     fn max_constraint_log_degree_bound(&self) -> u32 {
         self.degree_calls.set(self.degree_calls.get() + 1);
         5
+    }
+
+    fn evaluate<E: EvalAtRow>(&self, eval: E) -> E {
+        eval
+    }
+}
+
+impl FrameworkEval for UndersizedAir {
+    fn log_size(&self) -> u32 {
+        0
+    }
+
+    fn max_constraint_log_degree_bound(&self) -> u32 {
+        1
     }
 
     fn evaluate<E: EvalAtRow>(&self, eval: E) -> E {
@@ -396,10 +412,14 @@ fn explicit_framework_intermediates_are_inlined() {
 fn export_rejects_domains_larger_than_stwo_supports() {
     let err = export_component(&OversizedAir, ExportAnnotations::default())
         .expect_err("unsupported Circle domain must fail closed");
-    assert!(
-        err.to_string().contains("maximum Circle domain log size"),
-        "{err}"
-    );
+    assert!(err.to_string().contains("Circle domain range"), "{err}");
+}
+
+#[test]
+fn export_rejects_domains_smaller_than_stwo_supports() {
+    let err = export_component(&UndersizedAir, ExportAnnotations::default())
+        .expect_err("unsupported Circle domain must fail closed");
+    assert!(err.to_string().contains("Circle domain range"), "{err}");
 }
 
 #[test]
