@@ -5,41 +5,13 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::MutationPlan;
+use crate::{BoundaryPath, MutationPlan};
 
 /// Stable schema identifier for verifier-boundary contracts.
 pub const BOUNDARY_SCHEMA_ID: &str = "airlock.boundary-contract";
 
 /// Serialized boundary-contract version.
 pub const BOUNDARY_SCHEMA_VERSION: &str = "0.1.0";
-
-/// A stable path to a nested proof container.
-///
-/// `field` names the top-level proof field and `indices` selects nested tree,
-/// column, or layer containers. The final container's length is measured.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct BoundaryPath {
-    /// Stable proof-field name.
-    pub field: String,
-    /// Nested container indices.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub indices: Vec<usize>,
-}
-
-impl BoundaryPath {
-    /// Construct a path from a field name and nested indices.
-    pub fn new(field: impl Into<String>, indices: impl Into<Vec<usize>>) -> Self {
-        Self {
-            field: field.into(),
-            indices: indices.into(),
-        }
-    }
-
-    fn is_valid(&self) -> bool {
-        !self.field.trim().is_empty()
-    }
-}
 
 /// A cardinality measured at one proof path.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

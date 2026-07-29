@@ -27,7 +27,8 @@ claim.
 - `crates/airlock-ir`: lossless AuditIR contracts, coverage, and result types.
 - `crates/airlock-lint`: generic static checks over AuditIR.
 - `crates/airlock-boundary`: proof-neutral verifier request, observation,
-  mutation-plan, and outcome contracts.
+  mutation-plan, outcome, and typed transcript contracts. Boundary and
+  transcript result vocabularies remain separate assurance lanes.
 - `crates/airlock-cli`: lane-specific commands and fail-closed exit behavior.
 - `fixtures/seeded`: synthetic vulnerable/fixed regression pairs.
 - `docs/SPEC.md`: current technical scope and non-goals.

@@ -10,13 +10,28 @@
 mod model;
 mod mutation;
 mod oracle;
+mod path;
+mod transcript;
+mod transcript_oracle;
 
 pub use model::{
     BOUNDARY_SCHEMA_ID, BOUNDARY_SCHEMA_VERSION, BoundaryContract, BoundaryContractError,
-    BoundaryObservation, BoundaryPath, CaseKind, CountAtPath, OutcomeClass, VerificationOutcome,
+    BoundaryObservation, CaseKind, CountAtPath, OutcomeClass, VerificationOutcome,
 };
 pub use mutation::{MutationOperation, MutationPlan, MutationPlanError, ScalarMutation};
 pub use oracle::{
     BoundaryFinding, BoundaryFindingCode, BoundaryReport, BoundarySeverity, BoundaryVerdict,
     evaluate_boundary,
+};
+pub use path::{ArtifactPath, BoundaryPath};
+pub use transcript::{
+    AbsorbKind, AbsorptionRequirement, DomainSeparatorRequirement, DrawKind, DrawRequirement,
+    PathValidationRequirement, PowRequirement, QueryShape, TRANSCRIPT_SCHEMA_ID,
+    TRANSCRIPT_SCHEMA_VERSION, TranscriptContract, TranscriptContractError, TranscriptEvent,
+    TranscriptInventory, TranscriptRecorder, TranscriptSource, TranscriptStep, TranscriptTrace,
+    ValidationOutcome, ValidationRule, ZeroPowNoncePolicy,
+};
+pub use transcript_oracle::{
+    TranscriptFinding, TranscriptFindingCode, TranscriptReport, TranscriptSeverity,
+    TranscriptVerdict, evaluate_transcript,
 };

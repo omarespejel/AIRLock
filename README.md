@@ -16,7 +16,7 @@ or that a green AIRLock report establishes whole-system STARK security.
 | --- | --- |
 | AuditIR schema (`airlock-ir`) | landed |
 | Static gate (`airlock-lint`) | schema/shape + parameter/phase closure + preprocessed integrity + Q8 support/functionality + encoder bound + LogUp finalize |
-| Verifier boundary contracts (`airlock-boundary`) | proof-neutral request/supply/consumption model and fail-closed oracles; no Stwo adapter yet |
+| Verifier boundary contracts (`airlock-boundary`) | proof-neutral request/supply/consumption and typed transcript oracles; no Stwo adapter yet |
 | CLI (`airlock`) | `air`, `coverage`, `schema` |
 | Stwo `AuditEvaluator` exporter | landed (`airlock-export`); needs RelationEntry accessors — see `docs/STWO_PATCH.md` |
 | cvc5 / Lean / phase injection | later PRs |
@@ -63,6 +63,9 @@ future Stwo replay. Solver/Lean tracks remain separate lanes.
 - `StaticPass` is not Circle-FRI / Fiat–Shamir security.
 - A green boundary report covers only the modeled request, supply, consumption,
   and outcome invariants for the pinned target. It is not a protocol theorem.
+- A green transcript report establishes only the declared event-order and
+  validation prerequisites, exact PoW configuration, and query shape over one
+  complete typed trace. It does not establish Fiat--Shamir or FRI security.
 - `UNKNOWN` / timeout / `UNSUPPORTED` are never green.
 - Release status stays `BLOCKED` until all paper-relevant lanes are covered.
 
