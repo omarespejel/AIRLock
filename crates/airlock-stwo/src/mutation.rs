@@ -3,7 +3,6 @@
 use airlock_boundary::{BoundaryPath, MutationOperation, MutationPlan, ScalarMutation};
 use num_traits::{One, Zero};
 use sha2::{Digest, Sha256};
-use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
 use thiserror::Error;
 
@@ -87,14 +86,8 @@ fn mutate_container(
     mutation: ContainerMutation,
 ) -> Result<(), StwoMutationError> {
     match (path.field.as_str(), path.indices.as_slice()) {
-        ("commitments", []) => mutate_vec(&mut proof.0.commitments.0, mutation, path),
-        ("decommitments", []) => mutate_vec(&mut proof.0.decommitments.0, mutation, path),
         ("sampled_values", [tree, column]) => {
             let values = nested_column_mut(&mut proof.0.sampled_values.0, *tree, *column, path)?;
-            mutate_vec(values, mutation, path)
-        }
-        ("queried_values", [tree, column]) => {
-            let values = nested_column_mut(&mut proof.0.queried_values.0, *tree, *column, path)?;
             mutate_vec(values, mutation, path)
         }
         _ => Err(StwoMutationError::UnsupportedPath(path.clone())),
@@ -178,7 +171,6 @@ fn replace_scalar(
     mutation: ScalarMutation,
 ) -> Result<(), StwoMutationError> {
     match (path.field.as_str(), path.indices.as_slice()) {
-        ("proof_of_work", []) => apply_u64(&mut proof.0.proof_of_work, mutation, path),
         ("sampled_values", [tree, column, index]) => {
             let values = nested_column_mut(&mut proof.0.sampled_values.0, *tree, *column, path)?;
             let len = values.len();
@@ -192,64 +184,8 @@ fn replace_scalar(
                     })?;
             apply_secure_field(value, mutation, path)
         }
-        ("queried_values", [tree, column, index]) => {
-            let values = nested_column_mut(&mut proof.0.queried_values.0, *tree, *column, path)?;
-            let len = values.len();
-            let value =
-                values
-                    .get_mut(*index)
-                    .ok_or_else(|| StwoMutationError::IndexOutOfBounds {
-                        path: path.clone(),
-                        index: *index,
-                        len,
-                    })?;
-            apply_base_field(value, mutation, path)
-        }
         _ => Err(StwoMutationError::UnsupportedPath(path.clone())),
     }
-}
-
-fn apply_u64(
-    value: &mut u64,
-    mutation: ScalarMutation,
-    path: &BoundaryPath,
-) -> Result<(), StwoMutationError> {
-    *value = match mutation {
-        ScalarMutation::Zero => 0,
-        ScalarMutation::One => 1,
-        ScalarMutation::Maximum => u64::MAX,
-        ScalarMutation::Increment => value.wrapping_add(1),
-        ScalarMutation::Decrement => value.wrapping_sub(1),
-        ScalarMutation::FlipBit { bit } if bit < u64::BITS as usize => *value ^ (1_u64 << bit),
-        ScalarMutation::FlipBit { bit } => {
-            return Err(StwoMutationError::BitOutOfBounds {
-                path: path.clone(),
-                bit,
-                bits: u64::BITS as usize,
-            });
-        }
-    };
-    Ok(())
-}
-
-fn apply_base_field(
-    value: &mut BaseField,
-    mutation: ScalarMutation,
-    path: &BoundaryPath,
-) -> Result<(), StwoMutationError> {
-    *value = match mutation {
-        ScalarMutation::Zero => BaseField::zero(),
-        ScalarMutation::One => BaseField::one(),
-        ScalarMutation::Increment => *value + BaseField::one(),
-        ScalarMutation::Decrement => *value - BaseField::one(),
-        ScalarMutation::Maximum | ScalarMutation::FlipBit { .. } => {
-            return Err(StwoMutationError::UnsupportedScalar {
-                path: path.clone(),
-                mutation,
-            });
-        }
-    };
-    Ok(())
 }
 
 fn apply_secure_field(
@@ -340,7 +276,7 @@ mod tests {
     #[test]
     fn mutation_is_content_addressed_and_replayable() {
         let fixture = build_demo_fixture().expect("fixture");
-        let path = first_nonempty_query_path(&fixture.proof).expect("queried value");
+        let path = first_nonempty_sample_path(&fixture.proof).expect("sampled value");
         let mutated = mutate_proof(
             "demo-honest",
             &fixture.proof,
@@ -373,12 +309,12 @@ mod tests {
         assert!(matches!(error, StwoMutationError::PathOutOfBounds(_)));
     }
 
-    fn first_nonempty_query_path(proof: &DemoProof) -> Option<BoundaryPath> {
-        for (tree_index, columns) in proof.0.queried_values.iter().enumerate() {
+    fn first_nonempty_sample_path(proof: &DemoProof) -> Option<BoundaryPath> {
+        for (tree_index, columns) in proof.0.sampled_values.iter().enumerate() {
             for (column_index, values) in columns.iter().enumerate() {
                 if !values.is_empty() {
                     return Some(BoundaryPath::new(
-                        "queried_values",
+                        "sampled_values",
                         vec![tree_index, column_index, 0],
                     ));
                 }

@@ -36,8 +36,10 @@ pub struct LayerReplay {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum DifferentialVerdict {
-    /// Both layers produced the same conclusive green boundary result.
-    Consistent,
+    /// Both layers accepted the honest proof with exact modeled consumption.
+    HonestAccepted,
+    /// Both layers rejected the same adversarial mutation with typed errors.
+    MutationRejected,
     /// At least one layer produced a replayable invariant counterexample.
     Counterexample,
     /// The layers produced materially different conclusive results.
@@ -51,9 +53,9 @@ pub enum DifferentialVerdict {
 }
 
 impl DifferentialVerdict {
-    /// Only a consistent pair of conclusive green results is green.
-    pub const fn is_green(self) -> bool {
-        matches!(self, Self::Consistent)
+    /// Whether both layers produced the expected conclusive result for the case kind.
+    pub const fn is_expected(self) -> bool {
+        matches!(self, Self::HonestAccepted | Self::MutationRejected)
     }
 }
 
@@ -117,19 +119,19 @@ impl StwoBoundaryAdapter {
         self.replay(&mutated.proof, CaseKind::Mutated, Some(mutated.plan))
     }
 
-    /// Locate the first concrete query scalar for a deterministic corruption test.
-    pub fn first_queried_value_path(&self) -> Result<BoundaryPath, StwoBoundaryError> {
-        for (tree_index, columns) in self.fixture.proof.0.queried_values.iter().enumerate() {
+    /// Locate the first concrete OODS sample for a deterministic corruption test.
+    pub fn first_sampled_value_path(&self) -> Result<BoundaryPath, StwoBoundaryError> {
+        for (tree_index, columns) in self.fixture.proof.0.sampled_values.iter().enumerate() {
             for (column_index, values) in columns.iter().enumerate() {
                 if !values.is_empty() {
                     return Ok(BoundaryPath::new(
-                        "queried_values",
+                        "sampled_values",
                         vec![tree_index, column_index, 0],
                     ));
                 }
             }
         }
-        Err(StwoBoundaryError::MissingQueriedValue)
+        Err(StwoBoundaryError::MissingSampleValue)
     }
 
     fn replay(
@@ -148,7 +150,7 @@ impl StwoBoundaryAdapter {
             verify_raw_pcs(&self.fixture.component, self.fixture.config, proof.clone())
         });
         let raw_consumed = if matches!(raw_outcome, VerificationOutcome::Accepted) {
-            consumed_by_raw_zip(&contract.requested, &supplied)
+            consumed_by_pinned_zip(&contract.requested, &supplied)
         } else {
             vec![]
         };
@@ -169,7 +171,7 @@ impl StwoBoundaryAdapter {
             verify_framework(&self.fixture.component, self.fixture.config, proof.clone())
         });
         let framework_consumed = if matches!(framework_outcome, VerificationOutcome::Accepted) {
-            contract.requested.clone()
+            consumed_by_pinned_zip(&contract.requested, &supplied)
         } else {
             vec![]
         };
@@ -332,7 +334,7 @@ fn supplied_counts(proof: &DemoProof) -> Vec<CountAtPath> {
     supplied
 }
 
-fn consumed_by_raw_zip(requested: &[CountAtPath], supplied: &[CountAtPath]) -> Vec<CountAtPath> {
+fn consumed_by_pinned_zip(requested: &[CountAtPath], supplied: &[CountAtPath]) -> Vec<CountAtPath> {
     let supplied = supplied
         .iter()
         .map(|entry| (entry.path.clone(), entry.count))
@@ -412,7 +414,8 @@ fn classify(raw: &BoundaryReport, framework: &BoundaryReport) -> DifferentialVer
         return DifferentialVerdict::Divergence;
     }
     match raw.verdict {
-        B::Accepted | B::Rejected => DifferentialVerdict::Consistent,
+        B::Accepted => DifferentialVerdict::HonestAccepted,
+        B::Rejected => DifferentialVerdict::MutationRejected,
         B::Counterexample | B::Divergence => DifferentialVerdict::Counterexample,
         B::Panic => DifferentialVerdict::Panic,
         B::Timeout => DifferentialVerdict::Timeout,
@@ -467,9 +470,9 @@ pub enum StwoBoundaryError {
         /// Component-reported bound.
         composition_bound: u32,
     },
-    /// The fixture unexpectedly contains no opened query value.
-    #[error("honest Stwo proof contains no queried value")]
-    MissingQueriedValue,
+    /// The fixture unexpectedly contains no opened OODS sample.
+    #[error("honest Stwo proof contains no sampled value")]
+    MissingSampleValue,
     /// Mutation could not be represented or applied.
     #[error(transparent)]
     Mutation(#[from] StwoMutationError),
@@ -477,7 +480,7 @@ pub enum StwoBoundaryError {
 
 #[cfg(test)]
 mod tests {
-    use airlock_boundary::{BoundaryPath, MutationOperation, ScalarMutation};
+    use airlock_boundary::{BoundaryPath, CountAtPath, MutationOperation, ScalarMutation};
 
     use super::*;
 
@@ -499,28 +502,40 @@ mod tests {
     fn honest_real_proof_is_consistent_across_layers() {
         let adapter = StwoBoundaryAdapter::new().expect("adapter");
         let replay = adapter.replay_honest().expect("replay");
-        assert_eq!(replay.verdict, DifferentialVerdict::Consistent);
-        assert!(replay.verdict.is_green());
+        assert_eq!(replay.verdict, DifferentialVerdict::HonestAccepted);
+        assert!(replay.verdict.is_expected());
         assert_eq!(replay.raw_pcs.report.verdict, BoundaryVerdict::Accepted);
         assert_eq!(replay.framework.report.verdict, BoundaryVerdict::Accepted);
     }
 
     #[test]
-    fn corrupted_real_query_is_rejected_by_both_layers() {
+    fn corrupted_real_sample_is_rejected_by_both_layers() {
         let adapter = StwoBoundaryAdapter::new().expect("adapter");
-        let path = adapter.first_queried_value_path().expect("query path");
+        let path = adapter.first_sampled_value_path().expect("sample path");
         let replay = adapter
             .replay_mutation(
-                "corrupt-first-query",
+                "corrupt-first-sample",
                 vec![MutationOperation::ReplaceScalar {
                     path,
                     value: ScalarMutation::Increment,
                 }],
             )
             .expect("replay");
-        assert_eq!(replay.verdict, DifferentialVerdict::Consistent);
+        assert_eq!(replay.verdict, DifferentialVerdict::MutationRejected);
+        assert!(replay.verdict.is_expected());
         assert_eq!(replay.raw_pcs.report.verdict, BoundaryVerdict::Rejected);
         assert_eq!(replay.framework.report.verdict, BoundaryVerdict::Rejected);
+    }
+
+    #[test]
+    fn pinned_zip_consumption_never_assumes_the_full_request() {
+        let path = BoundaryPath::new("sampled_values", vec![1, 0]);
+        let requested = vec![CountAtPath::new(path.clone(), 2)];
+        let supplied = vec![CountAtPath::new(path.clone(), 1)];
+        assert_eq!(
+            consumed_by_pinned_zip(&requested, &supplied),
+            vec![CountAtPath::new(path, 1)]
+        );
     }
 
     #[test]
@@ -535,6 +550,20 @@ mod tests {
                 }],
             )
             .expect_err("unsupported path");
+        assert!(matches!(
+            error,
+            StwoBoundaryError::Mutation(StwoMutationError::UnsupportedPath(_))
+        ));
+
+        let error = adapter
+            .replay_mutation(
+                "unmodeled-query-path",
+                vec![MutationOperation::ReplaceScalar {
+                    path: BoundaryPath::new("queried_values", vec![0, 0, 0]),
+                    value: ScalarMutation::Increment,
+                }],
+            )
+            .expect_err("unmodeled proof container");
         assert!(matches!(
             error,
             StwoBoundaryError::Mutation(StwoMutationError::UnsupportedPath(_))

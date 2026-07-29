@@ -24,7 +24,8 @@ AIRLock v0 contains AuditIR, static AIR checks, seeded defect fixtures,
 proof-neutral verifier-boundary contracts, one pinned executable Stwo demo
 adapter, and a lane-aware CLI. The boundary contract crate includes typed
 transcript-policy oracles, while the Stwo adapter derives a real demo request
-and compares raw-PCS and framework outcomes. Statement binding,
+and compares raw-PCS and framework outcomes for modeled OODS-sample mutations.
+Other proof containers remain outside this adapter's coverage. Statement binding,
 protocol/FRI/Fiat-Shamir analysis, evidence verification, solver search, and
 malicious-witness injection remain separate or unfinished lanes unless current
 code and coverage say otherwise.

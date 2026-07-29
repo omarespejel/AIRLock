@@ -127,13 +127,16 @@ artifacts, and contain an ordered sequence of generic structural or scalar
 edits. Statically known no-op mutations are rejected; findings do not look up
 named historical defects. `airlock-boundary` remains proof-system neutral.
 `airlock-stwo` instantiates it against a deterministic real Stwo component: it
-builds an honest proof, derives sample requests from the verifier's component
-masks, applies generic structural or scalar mutations, and replays the case at
-both the raw PCS and ordinary framework layers. Its source identity is pinned
-to the checked Stwo baseline and accessor patch. The adapter's consumption
-counts are reconstructed from the pinned raw-boundary control flow; runtime
-outcomes come from the real verifier. This covers only the demo component and
-declared mutation paths. It does not claim protocol, transcript, FRI, or
+builds an honest proof, derives OODS sample requests from the verifier's
+component masks, applies generic structural or scalar mutations only within
+those sampled-value containers, and replays the case at both the raw PCS and
+ordinary framework layers. Its source identity is pinned to the checked Stwo
+baseline and accessor patch. For accepted runs, both layers' sample-consumption
+counts are reconstructed from the same pinned inner-PCS `zip` control flow;
+runtime outcomes come from the real verifier. This covers only the demo
+component and OODS-sample paths. Commitments, decommitments, query values, PoW,
+FRI internals, other components, and production integrations remain outside
+the executable coverage claim. It does not claim protocol, transcript, FRI, or
 whole-system soundness.
 
 The same crate defines a typed transcript trace. Every prover-controlled value

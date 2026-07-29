@@ -27,7 +27,7 @@ surfaces:
     note: "Broad Stwo and production-integration coverage is not yet instantiated."
   - name: stwo-demo-verifier-boundary
     status: COVERED
-    note: "Pinned real proof; verifier-derived sample request; generic query corruption; raw-PCS/framework differential replay."
+    note: "Pinned real proof; verifier-derived OODS sample request; sample-only corruption; raw-PCS/framework differential replay. Other proof containers are not covered."
   - name: stwo-transcript
     status: UNSUPPORTED
     note: "Typed recorder and generic ordering oracles exist; no executable Stwo transcript adapter is wired yet."
