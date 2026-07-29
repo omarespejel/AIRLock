@@ -16,7 +16,8 @@ or that a green AIRLock report establishes whole-system STARK security.
 | --- | --- |
 | AuditIR schema (`airlock-ir`) | landed |
 | Static gate (`airlock-lint`) | schema/shape + parameter/phase closure + preprocessed integrity + Q8 support/functionality + encoder bound + LogUp finalize |
-| Verifier boundary contracts (`airlock-boundary`) | proof-neutral request/supply/consumption and typed transcript oracles; no Stwo adapter yet |
+| Verifier boundary contracts (`airlock-boundary`) | proof-neutral request/supply/consumption and typed transcript oracles |
+| Pinned Stwo adapter (`airlock-stwo`) | real demo proof, verifier-derived OODS requests, sample-only mutations, raw-PCS/framework replay |
 | CLI (`airlock`) | `air`, `coverage`, `schema` |
 | Stwo `AuditEvaluator` exporter | landed (`airlock-export`); needs RelationEntry accessors — see `docs/STWO_PATCH.md` |
 | cvc5 / Lean / phase injection | later PRs |
@@ -32,6 +33,8 @@ The fail-closed boundary profiles are specified in
 scripts/setup-stwo.sh
 
 scripts/verify-local.sh
+
+cargo +nightly-2026-01-15 test -p airlock-stwo --locked
 
 cargo +nightly-2026-01-15 run -p airlock-cli -- air \
   --manifest fixtures/seeded/q8_padded_table_vulnerable.json
@@ -55,14 +58,17 @@ public issue.
 
 ## Language
 
-Rust (toolchain pin: `nightly-2026-01-15`) for AuditIR, static gates, and
-future Stwo replay. Solver/Lean tracks remain separate lanes.
+Rust (toolchain pin: `nightly-2026-01-15`) for AuditIR, static gates, and Stwo
+replay. Solver/Lean tracks remain separate lanes.
 
 ## Non-claims
 
 - `StaticPass` is not Circle-FRI / Fiat–Shamir security.
 - A green boundary report covers only the modeled request, supply, consumption,
   and outcome invariants for the pinned target. It is not a protocol theorem.
+- The executable Stwo adapter covers its deterministic demo component and
+  declared OODS-sample mutation paths, not other proof containers, every Stwo
+  component, or any production integration.
 - A green transcript report establishes only the declared event-order and
   validation prerequisites, exact PoW configuration, and query shape over one
   complete typed trace. It does not establish Fiat--Shamir or FRI security.

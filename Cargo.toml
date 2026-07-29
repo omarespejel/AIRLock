@@ -6,6 +6,7 @@ members = [
     "crates/airlock-lint",
     "crates/airlock-cli",
     "crates/airlock-export",
+    "crates/airlock-stwo",
 ]
 default-members = [
     "crates/airlock-boundary",
@@ -15,7 +16,8 @@ default-members = [
 ]
 # `airlock-export` stays a workspace member but is not a default member: it
 # requires a sibling Stwo checkout at `../stwo` (see docs/STWO_PATCH.md).
-# Build/test it explicitly: `cargo test -p airlock-export --locked`
+# `airlock-stwo` has the same pinned source requirement.
+# Build/test either explicitly with `cargo test -p <crate> --locked`.
 
 [workspace.package]
 version = "0.1.0"
@@ -28,6 +30,7 @@ rust-version = "1.94"
 airlock-ir = { path = "crates/airlock-ir" }
 airlock-lint = { path = "crates/airlock-lint" }
 airlock-export = { path = "crates/airlock-export" }
+airlock-boundary = { path = "crates/airlock-boundary" }
 anyhow = "1.0"
 blake3 = "1.5"
 clap = { version = "4.5", features = ["derive"] }

@@ -62,6 +62,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "airlock-stwo"
+version = "0.1.0"
+dependencies = [
+ "airlock-boundary",
+ "num-traits",
+ "serde",
+ "serde_json",
+ "sha2",
+ "stwo",
+ "stwo-constraint-framework",
+ "thiserror",
+]
+
+[[package]]
 name = "allocator-api2"
 version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
