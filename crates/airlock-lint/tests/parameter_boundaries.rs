@@ -357,6 +357,39 @@ fn column_metadata_and_relation_shapes_fail_closed() {
 }
 
 #[test]
+fn relation_names_have_one_arity_and_challenge_phase() {
+    let mut consistent = valid_component();
+    let mut second_side = consistent.relations[0].clone();
+    second_side.role = RelationRole::Query;
+    consistent.relations.push(second_side);
+    assert!(
+        !lint_component_structure(&consistent)
+            .iter()
+            .any(|finding| finding.message.contains("identity contract"))
+    );
+
+    let mut arity_mismatch = valid_component();
+    let mut wider = arity_mismatch.relations[0].clone();
+    wider.tuple.push(BaseExpr::constant(0));
+    arity_mismatch.relations.push(wider);
+    assert!(
+        lint_component_structure(&arity_mismatch)
+            .iter()
+            .any(|finding| finding.message.contains("identity contract"))
+    );
+
+    let mut phase_mismatch = valid_component();
+    let mut later = phase_mismatch.relations[0].clone();
+    later.challenge_phase = CommitmentPhase::Phase3Reduction;
+    phase_mismatch.relations.push(later);
+    assert!(
+        lint_component_structure(&phase_mismatch)
+            .iter()
+            .any(|finding| finding.message.contains("identity contract"))
+    );
+}
+
+#[test]
 fn constraint_identity_and_support_fail_closed() {
     let constraint = ConstraintDecl {
         id: "duplicate".into(),
@@ -569,6 +602,139 @@ fn duplicate_component_names_fail_at_manifest_boundary() {
         finding.code == FindingCode::InvalidManifestStructure
             && finding.message.contains("appears more than once")
     }));
+}
+
+#[test]
+fn semantic_contract_names_are_total_typed_and_unambiguous() {
+    let mut valid = valid_component();
+    valid.parameters.push(ParameterDecl {
+        name: "statement_input".into(),
+        field: airlock_ir::FieldSort::M31,
+        role: ParameterRole::PublicInput,
+        available_after: CommitmentPhase::Phase0Public,
+    });
+    valid.relations[0].tuple[0] = BaseExpr::param("statement_input");
+    valid.contract.public_inputs = vec!["statement_input".into()];
+    valid.columns[1].semantic_type = SemanticType::PublicOutput;
+    valid.contract.public_outputs = vec!["multiplicity".into()];
+    assert!(
+        !lint_component_structure(&valid)
+            .iter()
+            .any(|finding| finding.message.contains("public "))
+    );
+
+    let mut column_input = valid_component();
+    column_input.columns[0].semantic_type = SemanticType::PublicInput;
+    column_input.contract.public_inputs = vec!["table".into()];
+    assert!(
+        !lint_component_structure(&column_input)
+            .iter()
+            .any(|finding| finding.message.contains("public input"))
+    );
+
+    let mut missing_input = valid_component();
+    missing_input.contract.public_inputs = vec!["missing".into()];
+    assert!(
+        lint_component_structure(&missing_input)
+            .iter()
+            .any(|finding| finding
+                .message
+                .contains("public input `missing` must resolve"))
+    );
+
+    let mut wrong_input_role = valid_component();
+    wrong_input_role.parameters.push(ParameterDecl {
+        name: "claim".into(),
+        field: airlock_ir::FieldSort::M31,
+        role: ParameterRole::PublicClaim,
+        available_after: CommitmentPhase::Phase0Public,
+    });
+    wrong_input_role.contract.public_inputs = vec!["claim".into()];
+    assert!(
+        lint_component_structure(&wrong_input_role)
+            .iter()
+            .any(|finding| finding
+                .message
+                .contains("public input `claim` must resolve"))
+    );
+
+    let mut witness_input = valid_component();
+    witness_input.columns[1].semantic_type = SemanticType::PublicInput;
+    witness_input.contract.public_inputs = vec!["multiplicity".into()];
+    assert!(
+        lint_component_structure(&witness_input)
+            .iter()
+            .any(|finding| finding.message.contains("Phase0Public column"))
+    );
+
+    let mut omitted_input = valid_component();
+    omitted_input.parameters.push(ParameterDecl {
+        name: "statement_input".into(),
+        field: airlock_ir::FieldSort::M31,
+        role: ParameterRole::PublicInput,
+        available_after: CommitmentPhase::Phase0Public,
+    });
+    assert!(
+        lint_component_structure(&omitted_input)
+            .iter()
+            .any(|finding| finding
+                .message
+                .contains("omitted from the semantic contract"))
+    );
+
+    let mut missing_output = valid_component();
+    missing_output.contract.public_outputs = vec!["missing".into()];
+    assert!(
+        lint_component_structure(&missing_output)
+            .iter()
+            .any(|finding| finding
+                .message
+                .contains("public output `missing` must resolve"))
+    );
+
+    let mut wrong_output_type = valid_component();
+    wrong_output_type.contract.public_outputs = vec!["multiplicity".into()];
+    assert!(
+        lint_component_structure(&wrong_output_type)
+            .iter()
+            .any(|finding| {
+                finding
+                    .message
+                    .contains("public output `multiplicity` must resolve")
+            })
+    );
+
+    let mut omitted_output = valid_component();
+    omitted_output.columns[1].semantic_type = SemanticType::PublicOutput;
+    assert!(
+        lint_component_structure(&omitted_output)
+            .iter()
+            .any(|finding| finding
+                .message
+                .contains("omitted from the semantic contract"))
+    );
+
+    let mut duplicate_and_empty = valid_component();
+    duplicate_and_empty.contract.public_inputs = vec![" ".into(), "same".into(), "same".into()];
+    assert!(
+        lint_component_structure(&duplicate_and_empty)
+            .iter()
+            .any(|finding| finding.message.contains("names must not be empty"))
+    );
+    assert!(
+        lint_component_structure(&duplicate_and_empty)
+            .iter()
+            .any(|finding| finding.message.contains("appears more than once"))
+    );
+
+    let mut overlapping = valid_component();
+    overlapping.contract.public_inputs = vec!["value".into()];
+    overlapping.contract.public_outputs = vec!["value".into()];
+    assert!(
+        lint_component_structure(&overlapping)
+            .iter()
+            .any(|finding| finding.message.contains("both an input and an output"))
+    );
 }
 
 #[test]

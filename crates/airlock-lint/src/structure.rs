@@ -4,7 +4,8 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use airlock_ir::{
     BaseExpr, ColumnKind, CommitmentPhase, ComponentManifest, ExtExpr, Finding, FindingCode,
-    RowSupport, STWO_MAX_CIRCLE_DOMAIN_LOG_SIZE, STWO_MIN_CIRCLE_DOMAIN_LOG_SIZE, Severity,
+    ParameterRole, RowSupport, STWO_MAX_CIRCLE_DOMAIN_LOG_SIZE, STWO_MIN_CIRCLE_DOMAIN_LOG_SIZE,
+    SemanticType, Severity,
 };
 
 /// Reject inconsistent component domains, column reads, row supports, and
@@ -222,6 +223,7 @@ pub fn lint_component_structure(component: &ComponentManifest) -> Vec<Finding> {
         collect_ext_reads(&constraint.expression, &mut reads);
     }
 
+    let mut relation_contracts = BTreeMap::<&str, (usize, CommitmentPhase)>::new();
     for (index, relation) in component.relations.iter().enumerate() {
         let mut relation_reads = BTreeMap::<String, BTreeSet<i32>>::new();
         if relation.relation.trim().is_empty() || relation.tuple.is_empty() {
@@ -231,6 +233,26 @@ pub fn lint_component_structure(component: &ComponentManifest) -> Vec<Finding> {
                 format!("relation entry {index} must have a nonempty name and tuple"),
                 vec![relation.relation.clone()],
             ));
+        }
+        if !relation.relation.trim().is_empty() && !relation.tuple.is_empty() {
+            let contract = (relation.tuple.len(), relation.challenge_phase);
+            match relation_contracts.get(relation.relation.as_str()) {
+                Some(previous) if *previous != contract => {
+                    findings.push(structure_finding(
+                        component,
+                        FindingCode::InvalidManifestStructure,
+                        format!(
+                            "relation `{}` disagrees with its earlier identity contract: arity/phase {:?} vs {:?}",
+                            relation.relation, previous, contract
+                        ),
+                        vec![relation.relation.clone()],
+                    ));
+                }
+                Some(_) => {}
+                None => {
+                    relation_contracts.insert(relation.relation.as_str(), contract);
+                }
+            }
         }
         if !matches!(
             relation.challenge_phase,
@@ -341,7 +363,143 @@ pub fn lint_component_structure(component: &ComponentManifest) -> Vec<Finding> {
         }
     }
 
+    validate_semantic_contract(component, &mut findings);
+
     findings
+}
+
+fn validate_semantic_contract(component: &ComponentManifest, findings: &mut Vec<Finding>) {
+    let public_inputs = validate_contract_names(
+        component,
+        "public input",
+        &component.contract.public_inputs,
+        findings,
+    );
+    let public_outputs = validate_contract_names(
+        component,
+        "public output",
+        &component.contract.public_outputs,
+        findings,
+    );
+
+    for name in public_inputs.intersection(&public_outputs) {
+        findings.push(structure_finding(
+            component,
+            FindingCode::InvalidManifestStructure,
+            format!("public value `{name}` is declared as both an input and an output"),
+            vec![name.to_string()],
+        ));
+    }
+
+    for name in &public_inputs {
+        let matching_parameters = component
+            .parameters
+            .iter()
+            .filter(|parameter| {
+                parameter.name == *name && parameter.role == ParameterRole::PublicInput
+            })
+            .count();
+        let matching_columns = component
+            .columns
+            .iter()
+            .filter(|column| {
+                column.id == *name
+                    && column.semantic_type == SemanticType::PublicInput
+                    && column.commitment_phase == CommitmentPhase::Phase0Public
+            })
+            .count();
+        if matching_parameters + matching_columns != 1 {
+            findings.push(structure_finding(
+                component,
+                FindingCode::InvalidManifestStructure,
+                format!(
+                    "public input `{name}` must resolve to exactly one PublicInput parameter or Phase0Public column"
+                ),
+                vec![name.to_string()],
+            ));
+        }
+    }
+
+    for name in &public_outputs {
+        let matching_columns = component
+            .columns
+            .iter()
+            .filter(|column| {
+                column.id == *name && column.semantic_type == SemanticType::PublicOutput
+            })
+            .count();
+        if matching_columns != 1 {
+            findings.push(structure_finding(
+                component,
+                FindingCode::InvalidManifestStructure,
+                format!("public output `{name}` must resolve to exactly one PublicOutput column"),
+                vec![name.to_string()],
+            ));
+        }
+    }
+
+    for parameter in &component.parameters {
+        if parameter.role == ParameterRole::PublicInput
+            && !public_inputs.contains(parameter.name.as_str())
+        {
+            findings.push(structure_finding(
+                component,
+                FindingCode::InvalidManifestStructure,
+                format!(
+                    "PublicInput parameter `{}` is omitted from the semantic contract",
+                    parameter.name
+                ),
+                vec![parameter.name.clone()],
+            ));
+        }
+    }
+    for column in &component.columns {
+        let (contract_names, label) = match column.semantic_type {
+            SemanticType::PublicInput => (&public_inputs, "PublicInput"),
+            SemanticType::PublicOutput => (&public_outputs, "PublicOutput"),
+            _ => continue,
+        };
+        if !contract_names.contains(column.id.as_str()) {
+            findings.push(structure_finding(
+                component,
+                FindingCode::InvalidManifestStructure,
+                format!(
+                    "{label} column `{}` is omitted from the semantic contract",
+                    column.id
+                ),
+                vec![column.id.clone()],
+            ));
+        }
+    }
+}
+
+fn validate_contract_names<'a>(
+    component: &ComponentManifest,
+    kind: &str,
+    names: &'a [String],
+    findings: &mut Vec<Finding>,
+) -> BTreeSet<&'a str> {
+    let mut unique = BTreeSet::new();
+    for name in names {
+        if name.trim().is_empty() {
+            findings.push(structure_finding(
+                component,
+                FindingCode::InvalidManifestStructure,
+                format!("{kind} names must not be empty"),
+                vec![],
+            ));
+            continue;
+        }
+        if !unique.insert(name.as_str()) {
+            findings.push(structure_finding(
+                component,
+                FindingCode::InvalidManifestStructure,
+                format!("{kind} `{name}` appears more than once in the semantic contract"),
+                vec![name.clone()],
+            ));
+        }
+    }
+    unique
 }
 
 fn validate_support(

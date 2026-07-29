@@ -340,10 +340,10 @@ pub struct PreprocessedColumn {
 /// Verifier-owned semantic contract for a component.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SemanticContract {
-    /// Public inputs by name.
+    /// Public inputs by `ParameterDecl::name` or `ColumnDecl::id`.
     #[serde(default)]
     pub public_inputs: Vec<String>,
-    /// Public outputs by name.
+    /// Public outputs by `ColumnDecl::id`.
     #[serde(default)]
     pub public_outputs: Vec<String>,
     /// Integer obligations.

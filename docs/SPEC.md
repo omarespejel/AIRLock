@@ -53,7 +53,10 @@ Before semantic analysis, the generic linter also requires:
 - concrete preprocessed values to be canonical M31 representatives and match their
   declared content hash;
 - formal roles to match availability phases, and every relation input to be
-  available strictly before that relation's challenge phase; and
+  available strictly before that relation's challenge phase;
+- every entry sharing a relation name to agree on arity and challenge phase;
+- semantic-contract inputs and outputs to resolve exactly to typed public
+  declarations, with every public declaration listed in the contract; and
 - integer obligations to have unique names and undecomposed biased encoders to
   fit injectively in one M31 cell, with admitted bounds representable on both
   sides of zero.

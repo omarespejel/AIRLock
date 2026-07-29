@@ -40,6 +40,11 @@ well as missing, malformed, stale, and correctly recomputed hashes.
   or interaction.
 - Every column or formal parameter used by a relation must be available strictly
   before that relation's challenge phase; same-phase dependencies fail closed.
+- Entries sharing a relation name must agree on tuple arity and challenge phase.
+- Contract public-input names resolve to exactly one `PublicInput` parameter or
+  `Phase0Public` column; public-output names resolve to exactly one
+  `PublicOutput` column.
+  Empty, duplicate, overlapping, dangling, and omitted public names fail closed.
 - M31 constants and every limb of QM31 constants use canonical representatives;
   implicit modular reduction is rejected at the manifest boundary.
 
