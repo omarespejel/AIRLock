@@ -299,7 +299,20 @@ fn column_metadata_and_relation_shapes_fail_closed() {
         FindingCode::InvalidColumnContract
     ));
 
-    let mut empty_other_label = valid_component();
+    let mut named_other_label = valid_component();
+    named_other_label.columns[1].semantic_type = SemanticType::Other {
+        label: "lookup accumulator".into(),
+    };
+    assert!(
+        !lint_component_structure(&named_other_label)
+            .iter()
+            .any(|finding| {
+                finding.code == FindingCode::InvalidColumnContract
+                    && finding.message.contains("without a nonempty label")
+            })
+    );
+
+    let mut empty_other_label = named_other_label;
     empty_other_label.columns[1].semantic_type = SemanticType::Other {
         label: "   ".into(),
     };
