@@ -30,6 +30,17 @@ pub struct ReplayBundleFiles {
     pub checksums_file_sha256: String,
 }
 
+/// Fully parsed replay bundle returned only after every check succeeds.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VerifiedReplayBundle {
+    /// Digests of the exact bundle files.
+    pub files: ReplayBundleFiles,
+    /// Validated replay request.
+    pub request: ReplayRequest,
+    /// Validated process and replay record.
+    pub report: IsolatedReplayRecord,
+}
+
 /// Write a deterministic replay bundle into an exclusively created directory.
 ///
 /// A failed write removes the partial directory. Concurrent readers may still
@@ -99,6 +110,13 @@ pub fn write_replay_bundle(
 
 /// Verify file inventory, checksums, schemas, source and target, and report linkage.
 pub fn verify_replay_bundle(output_dir: &Path) -> Result<ReplayBundleFiles, ReplayBundleError> {
+    Ok(read_verified_replay_bundle(output_dir)?.files)
+}
+
+/// Verify and return the typed request and record in a replay bundle.
+pub fn read_verified_replay_bundle(
+    output_dir: &Path,
+) -> Result<VerifiedReplayBundle, ReplayBundleError> {
     let metadata = fs::symlink_metadata(output_dir).map_err(|error| ReplayBundleError::Io {
         operation: "inspect replay bundle directory",
         path: output_dir.to_path_buf(),
@@ -173,10 +191,14 @@ pub fn verify_replay_bundle(output_dir: &Path) -> Result<ReplayBundleFiles, Repl
         .map_err(|error| ReplayBundleError::MalformedArtifact(error.to_string()))?;
     report.validate(&request)?;
 
-    Ok(ReplayBundleFiles {
-        request_file_sha256: request_sha256,
-        report_file_sha256: report_sha256,
-        checksums_file_sha256: sha256_bytes(&checksum_bytes),
+    Ok(VerifiedReplayBundle {
+        files: ReplayBundleFiles {
+            request_file_sha256: request_sha256,
+            report_file_sha256: report_sha256,
+            checksums_file_sha256: sha256_bytes(&checksum_bytes),
+        },
+        request,
+        report,
     })
 }
 

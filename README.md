@@ -17,7 +17,7 @@ or that a green AIRLock report establishes whole-system STARK security.
 | AuditIR schema (`airlock-ir`) | landed |
 | Static gate (`airlock-lint`) | schema/shape + parameter/phase closure + preprocessed integrity + Q8 support/functionality + encoder bound + LogUp finalize |
 | Verifier boundary contracts (`airlock-boundary`) | proof-neutral request/supply/consumption and typed transcript oracles |
-| Pinned Stwo adapter (`airlock-stwo`) | real demo proof, verifier-derived OODS requests, sample-only mutations, raw-PCS/framework replay, subprocess containment, verified replay bundles |
+| Pinned Stwo adapter (`airlock-stwo`) | real demo proof, verifier-derived OODS requests, sample-only mutations, raw-PCS/framework replay, subprocess containment, verified replay bundles, generated Rust regression |
 | CLI (`airlock`) | `air`, `coverage`, `schema` |
 | Stwo `AuditEvaluator` exporter | landed (`airlock-export`); needs RelationEntry accessors — see `docs/STWO_PATCH.md` |
 | cvc5 / Lean / phase injection | later PRs |
@@ -35,6 +35,9 @@ scripts/setup-stwo.sh
 scripts/verify-local.sh
 
 cargo +nightly-2026-01-15 test -p airlock-stwo --locked
+
+# Honest proof, adversarial rejection, verified bundles, and Rust regression.
+scripts/demo-stwo-boundary.sh
 
 cargo +nightly-2026-01-15 run -p airlock-cli -- air \
   --manifest fixtures/seeded/q8_padded_table_vulnerable.json
@@ -78,6 +81,10 @@ replay. Solver/Lean tracks remain separate lanes.
   the demo verifier-boundary lane. They do not cover the separate evidence and
   provenance lane or authenticate who produced a bundle. External publication
   must pin or sign the bundle digest separately.
+- The generated Rust regression replays the exact request against the pinned
+  demo adapter, is compiled and executed offline, and contains no local
+  repository path. It does not broaden coverage beyond that component or prove
+  Stwo, FRI, Fiat--Shamir, or application soundness.
 - `UNKNOWN` / timeout / `UNSUPPORTED` are never green.
 - Release status stays `BLOCKED` until all paper-relevant lanes are covered.
 

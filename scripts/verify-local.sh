@@ -93,6 +93,13 @@ run_expected_failure \
   'protocol lane is OUT_OF_MODEL' \
   cargo +"$TOOLCHAIN" run --quiet --locked -p airlock-cli -- protocol
 
+DEMO_OUTPUT="$TMP_DIR/stwo-demo"
+DEMO_LOG="$TMP_DIR/stwo-demo.log"
+scripts/demo-stwo-boundary.sh "$DEMO_OUTPUT" >"$DEMO_LOG"
+grep -Fq 'AIRLOCK STWO DEMO PASSED' "$DEMO_LOG"
+test -s "$DEMO_OUTPUT/corrupt-oods-sample-regression.rs"
+printf 'PASS: Stwo honest, mutation, replay-bundle, and generated-regression demo\n'
+
 if [[ "$(git rev-parse HEAD)" != "$CURRENT_COMMIT" ]]; then
   printf 'FAIL: HEAD changed while validation was running\n' >&2
   exit 1

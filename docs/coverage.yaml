@@ -30,7 +30,7 @@ surfaces:
     note: "Pinned real proof; verifier-derived OODS sample request; sample-only corruption; raw-PCS/framework differential replay. Other proof containers are not covered."
   - name: stwo-demo-replay-artifact
     status: COVERED
-    note: "Verifier-boundary sub-surface only: pinned request; private copied worker; bounded subprocess; deterministic three-file replay bundle; strict inventory, checksum, schema, source/target, and replay validation. Not evidence/provenance assurance, an OS sandbox, or producer authentication."
+    note: "Verifier-boundary sub-surface only: pinned request; private copied worker; bounded subprocess; deterministic three-file replay bundle; strict inventory, checksum, schema, source/target, and replay validation; fail-closed CLI and generated Rust regression. Not evidence/provenance assurance, an OS sandbox, or producer authentication."
   - name: broad-evidence-provenance
     status: UNSUPPORTED
     note: "No signed publication, trusted timestamp, production component inventory, or cross-machine attestation."
