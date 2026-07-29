@@ -22,7 +22,8 @@ branch.
 
 AIRLock v0 contains AuditIR, static AIR checks, seeded defect fixtures,
 proof-neutral verifier-boundary contracts, and a lane-aware CLI. The boundary
-contract crate does not yet interpret Stwo proofs. Statement binding,
+contract crate includes typed transcript-policy oracles but does not yet
+interpret Stwo proofs. Statement binding,
 protocol/FRI/Fiat-Shamir analysis, evidence verification, solver search, and
 malicious-witness injection remain separate or unfinished lanes unless current
 code and coverage say otherwise.

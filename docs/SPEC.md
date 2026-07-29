@@ -127,6 +127,25 @@ edits. Statically known no-op mutations are rejected; findings do not look up
 named historical defects. The crate currently interprets no Stwo proof and
 does not claim protocol, transcript, FRI, or whole-system soundness.
 
+The same crate defines a typed transcript trace. Every prover-controlled value
+must name its proof path and pass all validation rules declared for that path
+before absorption. Every challenge and query draw must have a contract listing
+its required absorptions, optional domain separator, and proof-of-work
+precondition. Query count and domain size are exact contract fields. Named
+proof-of-work checks pin their bits and nonce path, and an absorbed nonce must
+match the exact bytes that passed validation and work verification. Query count
+is derived from recorded positions, and every position must belong to the
+contracted domain. Missing,
+duplicate, unmodeled, or reordered events fail closed. Zero-work nonce behavior
+must be chosen explicitly as disallowed, canonical-zero, or arbitrary; AIRLock
+does not silently promote one policy into a vulnerability.
+
+Absorbed values and challenge outputs are recorded by canonical SHA-256
+digests; nonce bytes and query positions are retained directly. The complete
+ordered trace is content addressed. This is an evidence and
+ordering contract only. The executable adapter and any Fiat--Shamir security
+reduction remain separate work.
+
 ## Seeded defects
 
 1. Q8 padded `(0,0)` table with free multiplicity — must fail.

@@ -25,6 +25,9 @@ surfaces:
   - name: stwo-verifier-boundary
     status: UNSUPPORTED
     note: "Proof-neutral boundary contracts exist; no executable Stwo adapter is wired yet."
+  - name: stwo-transcript
+    status: UNSUPPORTED
+    note: "Typed recorder and generic ordering oracles exist; no executable Stwo transcript adapter is wired yet."
   - name: warp-streaming
     status: UNSUPPORTED
     note: "Out of v1 scope."
