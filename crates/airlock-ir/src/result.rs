@@ -142,9 +142,7 @@ impl GateReport {
         airlock_version: impl Into<String>,
         findings: Vec<Finding>,
     ) -> Self {
-        let blocked = findings
-            .iter()
-            .any(|f| f.severity >= Severity::High);
+        let blocked = findings.iter().any(|f| f.severity >= Severity::High);
         let air_verdict = if blocked {
             Verdict::StaticFail
         } else if findings.is_empty() {

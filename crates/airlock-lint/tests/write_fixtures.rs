@@ -90,7 +90,10 @@ fn q8(vulnerable: bool) -> ComponentManifest {
         relations: vec![RelationEntry {
             relation: "SiLU".into(),
             role: RelationRole::Table,
-            tuple: vec![BaseExpr::column("table_code"), BaseExpr::column("table_silu")],
+            tuple: vec![
+                BaseExpr::column("table_code"),
+                BaseExpr::column("table_silu"),
+            ],
             multiplicity: BaseExpr::column("table_mult"),
             row_support: if vulnerable {
                 RowSupport::All

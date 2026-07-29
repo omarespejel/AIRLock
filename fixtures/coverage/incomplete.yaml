@@ -1,0 +1,7 @@
+schema: airlock.coverage
+surfaces:
+  - name: component-a
+    status: COVERED
+  - name: component-b
+    status: UNSUPPORTED
+    note: "An incomplete listed surface must fail the default gate."

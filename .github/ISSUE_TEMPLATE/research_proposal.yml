@@ -1,0 +1,39 @@
+name: Research or feature proposal
+description: Propose a scoped assurance lane, invariant, exporter, or analysis.
+title: "[research] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: hypothesis
+    attributes:
+      label: Hypothesis
+      description: State the security property or false-green class this work should test.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and non-claims
+      description: Name the assurance lane and what a successful result would not establish.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Acceptance and rejection gates
+      description: Define GO, NO-GO, UNKNOWN, and the seeded counterexample if one exists.
+    validations:
+      required: true
+  - type: textarea
+    id: sources
+    attributes:
+      label: Sources and pinned implementations
+      description: Link primary papers or exact upstream commits.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Disclosure check
+      options:
+        - label: This proposal does not publicly disclose an embargoed or unpatched vulnerability.
+          required: true

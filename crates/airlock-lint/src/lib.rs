@@ -7,11 +7,11 @@
 #![forbid(unsafe_code)]
 
 mod encoder;
-mod lookup;
 mod logup;
+mod lookup;
 mod runner;
 
 pub use encoder::lint_encoder_bounds;
-pub use lookup::{lint_lookup_functionality, lint_table_multiplicity_support};
 pub use logup::lint_logup_finalization;
-pub use runner::{lint_component, lint_manifest, LintOptions};
+pub use lookup::{lint_lookup_functionality, lint_table_multiplicity_support};
+pub use runner::{LintOptions, lint_component, lint_manifest};

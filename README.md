@@ -25,8 +25,7 @@ See [docs/SPEC.md](docs/SPEC.md) and [docs/coverage.yaml](docs/coverage.yaml).
 ## Quick start
 
 ```bash
-cargo +nightly-2026-01-15 test --locked
-cargo +nightly-2026-01-15 clippy --locked -- -D warnings
+scripts/verify-local.sh
 
 cargo +nightly-2026-01-15 run -p airlock-cli -- air \
   --manifest fixtures/seeded/q8_padded_table_vulnerable.json
@@ -41,6 +40,12 @@ cargo +nightly-2026-01-15 run -p airlock-cli -- air \
 
 PRs are reviewed by **CodeRabbit** and **Qodo Merge**. See
 [docs/AI_REVIEWERS.md](docs/AI_REVIEWERS.md).
+
+Repository-wide agent rules live in [AGENTS.md](AGENTS.md). Contributions use
+a local deterministic gate and PR-only merge discipline; AIRLock does not rely
+on paid GitHub Actions. See [CONTRIBUTING.md](CONTRIBUTING.md). Report suspected
+vulnerabilities through [private vulnerability reporting](SECURITY.md), not a
+public issue.
 
 ## Language
 

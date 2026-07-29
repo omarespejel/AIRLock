@@ -34,6 +34,11 @@ Prioritize, in order:
 4. Lane separation (AIR vs statement-binding vs protocol/FRI vs evidence).
 5. Seeded defect rediscovery without hard-coded file/column attack scripts.
 6. Claim hygiene in docs/README (no whole-system STARK soundness from AIR).
+7. Verifier-boundary discipline: validate exact proof shape and domains before
+   transcript mixing; malformed input returns a structured error, never panic
+   or silent truncation.
+8. Export closure: no emitted parameter or intermediate may be unbound, and
+   extension-field values retain every coordinate.
 
 Ignore pure style unless it hides correctness or overclaim risk.
 """
@@ -56,6 +61,9 @@ Focus findings on:
 - coverage manifests that omit executable surfaces;
 - green results on UNKNOWN/UNSUPPORTED;
 - docs that collapse lanes into sound=true.
+- proof or manifest shape checked after it influences a transcript;
+- expected-failure scripts that accept the wrong failure reason;
+- public artifacts that reveal private or embargoed vulnerability details.
 
 Avoid generic refactoring suggestions unless they reduce real correctness risk.
 Prefer pointing at exact FindingCode, fixture, or schema field.

@@ -3,8 +3,8 @@
 use airlock_ir::{AuditManifest, Finding, SemanticType};
 
 use crate::encoder::lint_encoder_bounds;
-use crate::lookup::{lint_lookup_functionality, lint_table_multiplicity_support};
 use crate::logup::lint_logup_finalization;
+use crate::lookup::{lint_lookup_functionality, lint_table_multiplicity_support};
 
 /// Options for the static gate.
 #[derive(Clone, Debug, Default)]

@@ -3,8 +3,8 @@
 ## Mission
 
 Build a Stwo-native assurance stack that analyzes verifier-emitted AIRs,
-searches for malicious witnesses, and refuse-to-green unmodeled or inconclusive
-surfaces.
+searches for malicious witnesses, and refuses to mark unmodeled or inconclusive
+surfaces green.
 
 AIRLock is **not** a whole-system STARK soundness verifier.
 

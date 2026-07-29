@@ -4,14 +4,18 @@ use std::fs;
 use std::path::PathBuf;
 
 use airlock_ir::{CoverageManifest, GateReport, IR_SCHEMA_VERSION};
-use airlock_lint::{lint_manifest, LintOptions};
-use anyhow::{bail, Context, Result};
+use airlock_lint::{LintOptions, lint_manifest};
+use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 
 const AIRLOCK_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, Parser)]
-#[command(name = "airlock", version, about = "Adversarial soundness testing for Stwo AIRs")]
+#[command(
+    name = "airlock",
+    version,
+    about = "Adversarial soundness testing for Stwo AIRs"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -69,7 +73,12 @@ fn main() -> Result<()> {
             bail!("evidence lane is not implemented in v0; see docs/SPEC.md")
         }
         Command::Schema => {
-            println!("schema={} version={} airlock={}", airlock_ir::IR_SCHEMA_ID, IR_SCHEMA_VERSION, AIRLOCK_VERSION);
+            println!(
+                "schema={} version={} airlock={}",
+                airlock_ir::IR_SCHEMA_ID,
+                IR_SCHEMA_VERSION,
+                AIRLOCK_VERSION
+            );
             Ok(())
         }
     }
@@ -88,7 +97,11 @@ fn load_audit_manifest(path: &PathBuf) -> Result<airlock_ir::AuditManifest> {
     }
 }
 
-fn cmd_air(manifest: PathBuf, require_annotations: bool, report_path: Option<PathBuf>) -> Result<()> {
+fn cmd_air(
+    manifest: PathBuf,
+    require_annotations: bool,
+    report_path: Option<PathBuf>,
+) -> Result<()> {
     let audit = load_audit_manifest(&manifest)?;
     let options = LintOptions {
         require_semantic_annotations: require_annotations,
@@ -161,8 +174,7 @@ fn cmd_coverage(manifest: PathBuf, require: Vec<String>) -> Result<()> {
         println!("{} => {:?}", entry.name, entry.status);
     }
 
-    let explicit: Vec<&str> = require.iter().map(String::as_str).collect();
-    if !explicit.is_empty() && !coverage.all_required_covered(&explicit) {
+    if !coverage.all_required_covered(&required) {
         bail!("required surfaces are not all COVERED");
     }
     Ok(())

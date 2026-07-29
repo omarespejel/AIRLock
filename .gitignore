@@ -7,3 +7,11 @@
 /*.profraw
 /coverage/
 /tmp/
+/.env
+/.env.*
+!/.env.example
+/reports/private/
+/artifacts/private/
+*.secret
+*.key
+*.pem
