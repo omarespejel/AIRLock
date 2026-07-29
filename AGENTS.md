@@ -33,6 +33,8 @@ claim.
   mutations, raw-PCS/framework differential replay, subprocess containment,
   and deterministic replay-bundle verification. Replay bundles remain part of
   this verifier-boundary adapter; they do not mark evidence/provenance covered.
+- `scripts/demo-stwo-boundary.sh`: local honest/mutation replay, replay-bundle
+  verification, and regression-generation demo. It must fail closed.
 - `crates/airlock-cli`: lane-specific commands and fail-closed exit behavior.
 - `fixtures/seeded`: synthetic vulnerable/fixed regression pairs.
 - `docs/SPEC.md`: current technical scope and non-goals.

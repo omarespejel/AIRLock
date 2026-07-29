@@ -9,6 +9,7 @@ mod adapter;
 mod fixture;
 mod isolation;
 mod mutation;
+mod regression;
 mod replay_bundle;
 mod request;
 mod temp;
@@ -21,8 +22,10 @@ pub use isolation::{
     IsolatedReplayError, IsolatedReplayRecord, ProcessTermination, run_isolated_replay,
 };
 pub use mutation::{MutatedProof, StwoMutationError, mutate_proof, proof_sha256};
+pub use regression::generate_regression_source;
 pub use replay_bundle::{
-    ReplayBundleError, ReplayBundleFiles, verify_replay_bundle, write_replay_bundle,
+    ReplayBundleError, ReplayBundleFiles, VerifiedReplayBundle, read_verified_replay_bundle,
+    verify_replay_bundle, write_replay_bundle,
 };
 pub use request::{
     ReplayCase, ReplayRequest, ReplayRequestError, execute_replay_request, replay_request_sha256,

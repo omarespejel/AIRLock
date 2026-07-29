@@ -177,6 +177,16 @@ runner is subprocess containment, not an OS sandbox. The bundle is deterministic
 and self-consistent, but it is not signed and therefore does not authenticate
 its producer.
 
+`airlock-stwo-demo` exposes honest replay, OODS-sample corruption, bundle
+verification, and path-independent Rust-regression generation. Run commands
+exit successfully only when the replay bundle is internally consistent and its
+verdict matches the requested case. The verify command additionally requires a
+fresh execution with the supplied worker to reproduce the stored record
+exactly. A valid timeout, panic, process failure, or counterexample remains a
+replay record but cannot pass the demo or release gate. Generated regressions
+must not contain the local repository path and are compiled and executed in a
+temporary offline Cargo project.
+
 ## Seeded defects
 
 1. Q8 padded `(0,0)` table with free multiplicity — must fail.
