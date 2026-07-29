@@ -48,7 +48,8 @@ scripts/verify-local.sh
 
 The script checks formatting, Clippy, the workspace tests, vulnerable/fixed
 fixture behavior, fail-closed coverage, and unimplemented-lane exits. Paste its
-result and the exact commit into the PR.
+result and the exact commit into the PR. The canonical gate rejects a dirty
+working tree and derives its Rust toolchain from `rust-toolchain.toml`.
 
 ## Pull requests
 

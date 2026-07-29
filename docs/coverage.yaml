@@ -1,4 +1,5 @@
 schema: airlock.coverage
+# This inventory tracks analyzed proof-system surfaces, not developer scripts.
 surfaces:
   - name: fused-stage-a-q7
     status: UNSUPPORTED

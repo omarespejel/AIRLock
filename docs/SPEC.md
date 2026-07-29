@@ -22,6 +22,11 @@ AIRLock is **not** a whole-system STARK soundness verifier.
 Only `COVERED` is green. `UNSUPPORTED`, `QUARANTINED`, and `UNKNOWN` fail closed
 for release claims.
 
+A coverage surface is a proof-system relation, component, statement boundary,
+or protocol/evidence lane analyzed by AIRLock. Development commands and shell
+utilities are validated by the repository gate; they are not cryptographic
+coverage surfaces.
+
 ## AuditIR requirements (lossless bar)
 
 An export is not faithful enough for `COVERED` unless it retains:

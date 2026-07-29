@@ -2,4 +2,25 @@
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
-exec "$ROOT/scripts/verify-local.sh"
+HEAD_COMMIT="$(git rev-parse HEAD)"
+PUSHED_REFS=0
+
+while read -r local_ref local_oid remote_ref remote_oid; do
+  if [[ "$local_oid" =~ ^0+$ ]]; then
+    continue
+  fi
+  PUSHED_REFS=$((PUSHED_REFS + 1))
+  if [[ "$local_oid" != "$HEAD_COMMIT" ]]; then
+    printf 'AIRLock pre-push blocks %s (%s): check out that commit and validate it directly\n' \
+      "$local_ref" "$local_oid" >&2
+    exit 1
+  fi
+  printf 'AIRLock pre-push: %s -> %s at %s\n' "$local_ref" "$remote_ref" "$local_oid"
+  : "$remote_oid"
+done
+
+if [[ "$PUSHED_REFS" -eq 0 ]]; then
+  exit 0
+fi
+
+AIRLOCK_EXPECTED_COMMIT="$HEAD_COMMIT" exec "$ROOT/scripts/verify-local.sh"
