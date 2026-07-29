@@ -28,6 +28,12 @@ surfaces:
   - name: stwo-demo-verifier-boundary
     status: COVERED
     note: "Pinned real proof; verifier-derived OODS sample request; sample-only corruption; raw-PCS/framework differential replay. Other proof containers are not covered."
+  - name: stwo-demo-replay-evidence
+    status: COVERED
+    note: "Pinned replay request; bounded subprocess execution; exact worker digest; deterministic three-file bundle; strict inventory, checksum, schema, provenance, and replay validation. Not an OS sandbox or producer-authentication mechanism."
+  - name: broad-evidence-provenance
+    status: UNSUPPORTED
+    note: "No signed publication, trusted timestamp, production component inventory, or cross-machine attestation."
   - name: stwo-transcript
     status: UNSUPPORTED
     note: "Typed recorder and generic ordering oracles exist; no executable Stwo transcript adapter is wired yet."

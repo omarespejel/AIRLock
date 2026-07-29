@@ -30,7 +30,8 @@ claim.
   mutation-plan, outcome, and typed transcript contracts. Boundary and
   transcript result vocabularies remain separate assurance lanes.
 - `crates/airlock-stwo`: pinned executable demo adapter, OODS-sample
-  mutations, and raw-PCS/framework differential replay.
+  mutations, raw-PCS/framework differential replay, subprocess containment,
+  and deterministic evidence-bundle verification.
 - `crates/airlock-cli`: lane-specific commands and fail-closed exit behavior.
 - `fixtures/seeded`: synthetic vulnerable/fixed regression pairs.
 - `docs/SPEC.md`: current technical scope and non-goals.

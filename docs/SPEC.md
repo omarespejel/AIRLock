@@ -16,7 +16,7 @@ AIRLock is **not** a whole-system STARK soundness verifier.
 | Statement binding | separate | `OUT_OF_MODEL` |
 | Verifier boundary | `airlock-boundary`, `airlock-stwo` | contracts plus one pinned executable demo adapter |
 | Protocol / FRI / FS | `airlock-boundary` | typed transcript contract/oracle only; executable transcript capture remains `UNINSTANTIATED` |
-| Evidence / provenance | separate | `NOT_RUN` |
+| Evidence / provenance | `airlock-stwo` | process-contained replay and self-verifying bundle for the pinned demo target only |
 
 ## Coverage statuses
 
@@ -157,6 +157,22 @@ digests; nonce bytes and query positions are retained directly. The complete
 ordered trace is content addressed. This is an evidence and
 ordering contract only. The executable adapter and any Fiat--Shamir security
 reduction remain separate work.
+
+## Isolated replay evidence
+
+`airlock-stwo-worker` accepts a bounded, content-addressed replay request and
+returns one validated differential replay. The parent runner hashes the exact
+worker executable, owns the deadline, drains bounded stdout and stderr, and
+classifies timeout, process failure, oversized output, malformed output, and
+response mismatch separately. Only an honest acceptance or expected mutation
+rejection may satisfy `is_expected`; every process anomaly fails closed.
+
+The evidence writer publishes a new directory containing exactly
+`request.json`, `report.json`, and `SHA256SUMS`. The verifier checks file
+inventory, size limits, canonical schemas, checksums, pinned source and target,
+request linkage, and every replay report. The runner is subprocess containment,
+not an OS sandbox. The bundle is deterministic and self-consistent, but it is
+not signed and therefore does not authenticate its producer.
 
 ## Seeded defects
 
