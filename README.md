@@ -57,3 +57,7 @@ future Stwo replay. Solver/Lean tracks remain separate lanes.
 - `StaticPass` is not Circle-FRI / Fiat–Shamir security.
 - `UNKNOWN` / timeout / `UNSUPPORTED` are never green.
 - Release status stays `BLOCKED` until all paper-relevant lanes are covered.
+
+## License
+
+Apache-2.0. See [LICENSE](LICENSE).
