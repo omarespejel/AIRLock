@@ -14,7 +14,8 @@ AIRLock is **not** a whole-system STARK soundness verifier.
 | --- | --- | --- |
 | AIR relation | `airlock air` | static gate over AuditIR |
 | Statement binding | separate | `OUT_OF_MODEL` |
-| Protocol / FRI / FS | `airlock-boundary` | contract/oracle schema only; Stwo adapter `UNINSTANTIATED` |
+| Verifier boundary | `airlock-boundary`, `airlock-stwo` | contracts plus one pinned executable demo adapter |
+| Protocol / FRI / FS | `airlock-boundary` | typed transcript contract/oracle only; executable transcript capture remains `UNINSTANTIATED` |
 | Evidence / provenance | separate | `NOT_RUN` |
 
 ## Coverage statuses
@@ -124,8 +125,16 @@ Mutation plans are structured and replayable. They identify an honest seed,
 record distinct SHA-256 digests of the canonical seed and post-mutation
 artifacts, and contain an ordered sequence of generic structural or scalar
 edits. Statically known no-op mutations are rejected; findings do not look up
-named historical defects. The crate currently interprets no Stwo proof and
-does not claim protocol, transcript, FRI, or whole-system soundness.
+named historical defects. `airlock-boundary` remains proof-system neutral.
+`airlock-stwo` instantiates it against a deterministic real Stwo component: it
+builds an honest proof, derives sample requests from the verifier's component
+masks, applies generic structural or scalar mutations, and replays the case at
+both the raw PCS and ordinary framework layers. Its source identity is pinned
+to the checked Stwo baseline and accessor patch. The adapter's consumption
+counts are reconstructed from the pinned raw-boundary control flow; runtime
+outcomes come from the real verifier. This covers only the demo component and
+declared mutation paths. It does not claim protocol, transcript, FRI, or
+whole-system soundness.
 
 The same crate defines a typed transcript trace. Every prover-controlled value
 must name its proof path and pass all validation rules declared for that path
@@ -160,5 +169,5 @@ M31 canonical values, encoder widths `0/1/8/127/128`, and asymmetric biases.
 
 - cvc5 / Picus / Lean
 - Circle-FRI security ledger
-- Executable Stwo verifier-boundary adapter
+- Broad Stwo component and production-integration coverage beyond the demo adapter
 - Live SparseProve exporter (feature-flagged later)

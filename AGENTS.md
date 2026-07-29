@@ -29,6 +29,8 @@ claim.
 - `crates/airlock-boundary`: proof-neutral verifier request, observation,
   mutation-plan, outcome, and typed transcript contracts. Boundary and
   transcript result vocabularies remain separate assurance lanes.
+- `crates/airlock-stwo`: pinned executable demo adapter, generic proof
+  mutations, and raw-PCS/framework differential replay.
 - `crates/airlock-cli`: lane-specific commands and fail-closed exit behavior.
 - `fixtures/seeded`: synthetic vulnerable/fixed regression pairs.
 - `docs/SPEC.md`: current technical scope and non-goals.
