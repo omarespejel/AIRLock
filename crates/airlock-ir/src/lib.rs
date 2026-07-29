@@ -13,7 +13,9 @@ mod manifest;
 mod result;
 mod schema;
 
-pub use coverage::{CoverageManifest, CoverageStatus, SurfaceEntry};
+pub use coverage::{
+    COVERAGE_SCHEMA_ID, CoverageManifest, CoverageManifestError, CoverageStatus, SurfaceEntry,
+};
 pub use expr::{BaseExpr, ExtExpr, FieldSort};
 pub use hash::{ContentHash, canonical_json, content_hash, hash_manifest, hash_u32_values};
 pub use manifest::{
