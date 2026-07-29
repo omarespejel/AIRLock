@@ -565,6 +565,15 @@ fn evaluate_pow_contract(
         ));
         return false;
     };
+    let pow_passed = outcome == ValidationOutcome::Passed;
+    if !pow_passed {
+        findings.push(finding(
+            FindingCode::TranscriptPowVerificationFailed,
+            Severity::High,
+            format!("event {index} proof-of-work verification `{label}` failed"),
+            vec![label.to_owned(), format_path(nonce_path)],
+        ));
+    }
     if bits != requirement.bits
         || nonce_path != &requirement.nonce_path
         || nonce_byte_len != requirement.nonce_byte_len
@@ -578,15 +587,6 @@ fn evaluate_pow_contract(
             vec![label.to_owned(), format_path(nonce_path)],
         ));
         return false;
-    }
-    let pow_passed = outcome == ValidationOutcome::Passed;
-    if !pow_passed {
-        findings.push(finding(
-            FindingCode::TranscriptPowVerificationFailed,
-            Severity::High,
-            format!("event {index} proof-of-work verification `{label}` failed"),
-            vec![label.to_owned(), format_path(nonce_path)],
-        ));
     }
     if bits == 0 {
         let violation = match requirement.zero_nonce_policy {
@@ -1011,6 +1011,26 @@ mod tests {
         assert_eq!(report.verdict, TranscriptVerdict::Counterexample);
         assert!(report.findings.iter().any(|finding| {
             finding.code == TranscriptFindingCode::ProverDataUsedBeforeValidation
+        }));
+        assert!(report.findings.iter().any(|finding| {
+            finding.code == TranscriptFindingCode::TranscriptPowVerificationFailed
+        }));
+    }
+
+    #[test]
+    fn failed_pow_is_reported_even_when_metadata_also_mismatches() {
+        let policy = ZeroPowNoncePolicy::DisallowZeroPow;
+        let mut trace = valid_trace(policy);
+        let TranscriptEvent::VerifyPow { bits, outcome, .. } = &mut trace.events[5] else {
+            panic!("fixture must contain its PoW event at index 5");
+        };
+        *bits += 1;
+        *outcome = ValidationOutcome::Failed;
+
+        let report = evaluate_transcript(&contract(policy), &trace);
+        assert_eq!(report.verdict, TranscriptVerdict::Counterexample);
+        assert!(report.findings.iter().any(|finding| {
+            finding.code == TranscriptFindingCode::TranscriptPowContractMismatch
         }));
         assert!(report.findings.iter().any(|finding| {
             finding.code == TranscriptFindingCode::TranscriptPowVerificationFailed
