@@ -66,6 +66,7 @@ name = "airlock-stwo"
 version = "0.1.0"
 dependencies = [
  "airlock-boundary",
+ "libc",
  "num-traits",
  "rand",
  "serde",

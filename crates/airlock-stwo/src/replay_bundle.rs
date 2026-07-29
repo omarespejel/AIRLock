@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -211,20 +211,36 @@ fn read_bounded(
     name: &'static str,
     max_bytes: u64,
 ) -> Result<Vec<u8>, ReplayBundleError> {
-    let metadata = fs::symlink_metadata(path).map_err(|error| ReplayBundleError::Io {
-        operation: "inspect replay bundle file",
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW);
+    }
+    let file = options.open(path).map_err(|error| ReplayBundleError::Io {
+        operation: "open replay bundle file",
+        path: path.to_path_buf(),
+        message: error.to_string(),
+    })?;
+    let metadata = file.metadata().map_err(|error| ReplayBundleError::Io {
+        operation: "inspect opened replay bundle file",
         path: path.to_path_buf(),
         message: error.to_string(),
     })?;
     if !metadata.is_file() || metadata.file_type().is_symlink() {
         return Err(ReplayBundleError::UnexpectedFile(name.to_owned()));
     }
-    enforce_size(name, metadata.len(), max_bytes)?;
-    fs::read(path).map_err(|error| ReplayBundleError::Io {
-        operation: "read replay bundle file",
-        path: path.to_path_buf(),
-        message: error.to_string(),
-    })
+    let mut bytes = Vec::with_capacity((metadata.len().min(max_bytes) + 1) as usize);
+    file.take(max_bytes + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| ReplayBundleError::Io {
+            operation: "read replay bundle file",
+            path: path.to_path_buf(),
+            message: error.to_string(),
+        })?;
+    enforce_size(name, bytes.len() as u64, max_bytes)?;
+    Ok(bytes)
 }
 
 fn enforce_size(name: &'static str, actual: u64, maximum: u64) -> Result<(), ReplayBundleError> {
@@ -327,4 +343,27 @@ pub enum ReplayBundleError {
         /// Operating-system diagnostic.
         message: String,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::temp::PrivateTempDir;
+
+    #[test]
+    fn bounded_reader_enforces_the_limit_while_reading() {
+        let directory = PrivateTempDir::create_in(&std::env::temp_dir(), ".airlock-read-")
+            .expect("private test directory");
+        let path = directory.path().join("oversized");
+        fs::write(&path, vec![0_u8; 4097]).expect("write oversized test file");
+
+        assert!(matches!(
+            read_bounded(&path, "oversized", 4096),
+            Err(ReplayBundleError::FileTooLarge {
+                actual: 4097,
+                maximum: 4096,
+                ..
+            })
+        ));
+    }
 }
