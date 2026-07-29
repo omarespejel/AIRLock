@@ -19,7 +19,7 @@ or that a green AIRLock report establishes whole-system STARK security.
 | Verifier boundary contracts (`airlock-boundary`) | proof-neutral request/supply/consumption and typed transcript oracles |
 | Pinned Stwo adapter (`airlock-stwo`) | real demo proof, verifier-derived OODS requests, sample-only mutations, raw-PCS/framework replay, subprocess containment, verified replay bundles, generated Rust regression |
 | CLI (`airlock`) | `air`, `coverage`, `schema` |
-| Stwo `AuditEvaluator` exporter | landed (`airlock-export`); needs RelationEntry accessors — see `docs/STWO_PATCH.md` |
+| Stwo `AuditEvaluator` exporter | landed (`airlock-export`); concrete differential checks cover one synthetic cross-interaction AIR |
 | cvc5 / Lean / phase injection | later PRs |
 
 See [docs/SPEC.md](docs/SPEC.md) and [docs/coverage.yaml](docs/coverage.yaml).
@@ -35,6 +35,10 @@ scripts/setup-stwo.sh
 scripts/verify-local.sh
 
 cargo +nightly-2026-01-15 test -p airlock-stwo --locked
+
+# Exporter-faithfulness differential against Stwo's concrete evaluators.
+cargo +nightly-2026-01-15 test -p airlock-export \
+  --test assert_evaluator_faithfulness --locked
 
 # Honest proof, adversarial rejection, verified bundles, and Rust regression.
 scripts/demo-stwo-boundary.sh
@@ -72,6 +76,17 @@ replay. Solver/Lean tracks remain separate lanes.
 - The executable Stwo adapter covers its deterministic demo component and
   declared OODS-sample mutation paths, not other proof containers, every Stwo
   component, or any production integration.
+- The concrete exporter-faithfulness suite compares one synthetic
+  cross-interaction AIR against Stwo's `AssertEvaluator`, checks a Stwo-generated
+  LogUp trace against both implementations, and compares uncompressed relation
+  entries with `RelationTrackerEvaluator`. Its deterministic malicious
+  assignments validate those exercised mappings. Concrete evaluation rejects
+  empty constraint sets and bounded-depth violations instead of reporting a
+  vacuous result or exhausting the host stack. Relation compression is
+  limited to explicitly annotated Stwo `LookupElements` implementations whose
+  exact `-z` constant and `alpha`-power coefficients pass the exporter
+  fingerprint; custom relation protocols and universal equivalence for every
+  `FrameworkEval` remain unsupported.
 - A green transcript report establishes only the declared event-order and
   validation prerequisites, exact PoW configuration, and query shape over one
   complete typed trace. It does not establish Fiat--Shamir or FRI security.

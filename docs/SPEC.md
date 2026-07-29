@@ -33,6 +33,8 @@ coverage surfaces.
 An export is not faithful enough for `COVERED` unless it retains:
 
 - uncompressed relation entries (name, role, tuple, multiplicity, row support, phase);
+- an explicit relation-compression contract whose implementation is checked
+  against the exported tuple;
 - preprocessed `semantic_length` vs `physical_length` plus concrete values **or**
   checked generator identity + values hash;
 - commitment phases for columns and challenges;
@@ -77,6 +79,28 @@ rewrites known preprocessed `Param`s to `Column` ids, requires relation
 annotations, and retains full `SecureCol` / QM31 `Const` limbs (AuditIR schema
 `0.4.0`).
 
+`AuditEvaluator` numbers columns independently inside each commitment tree,
+matching Stwo's `InfoEvaluator`, `AssertEvaluator`, and relation tracker. Export
+also compares every non-empty per-interaction mask schedule with
+`InfoEvaluator::mask_offsets` and fails closed on divergence. Empty interaction
+slots contain no reads and are normalized away in this comparison. The concrete
+AuditIR evaluator accepts only exact, canonical assignments, resolves columns
+once per evaluation, takes preprocessed values from the manifest, reproduces
+Stwo's bit-reversed Circle-domain offset reads, and rejects vacuous hold
+queries, over-deep expressions, missing values, unknown values, generator-only
+preprocessing, invalid domains, and undefined inverses.
+
+The checked differential surface is deliberately small. One nonconstant
+synthetic AIR exercises previous/current/next-row reads, independent original
+and interaction-tree column numbering, all four QM31 coordinates, and
+deterministic malicious cell mutations. A second fixture compares every
+uncompressed relation tuple and multiplicity with Stwo's
+`RelationTrackerEvaluator`, accepts a real Stwo-generated LogUp interaction
+trace and claimed sum in both evaluators, and rejects every single-cell
+mutation in the exported relation. Agreement on those fixtures supports the
+exported mapping they exercise; it is not a general proof that all
+`FrameworkEval` implementations export faithfully.
+
 Requires sibling Stwo `../stwo` whose dependency trees match upstream baseline
 `f0d79b0f…`, plus the exact checked
 RelationEntry accessor patch documented in `docs/STWO_PATCH.md`. The canonical
@@ -87,8 +111,17 @@ declaration is unused, or one name is used at conflicting field sorts. Standard
 LogUp claims and challenges are declared automatically; component-specific
 parameters require explicit annotations. A relation is represented with one
 Fiat--Shamir `alpha` and explicit powers `1, alpha, alpha^2, ...`, matching
-Stwo's `LookupElements`, rather than treating each power as independent. The
-required build pin is not presented as observed manifest provenance.
+Stwo's `LookupElements`, rather than treating each power as independent.
+Export requires an explicit `StwoLookupElements` compression annotation and
+the concrete `z` and `alpha` values held by the exported `FrameworkEval`.
+AIRLock symbolically fingerprints the relation's concrete `combine`
+implementation and checks the exact constant `-z` and coefficients
+`1, alpha, alpha^2, ...`. It rejects zero-arity, nonlinear, cross-term,
+reordered, non-geometric, challenge-mismatched, or oversized compression
+instead of silently reinterpreting it. Deriving those concrete values from the
+Fiat--Shamir transcript remains outside this exporter-faithfulness lane;
+arbitrary custom relation protocols are also unsupported. The required build
+pin is not presented as observed manifest provenance.
 
 ## Static findings (v0)
 

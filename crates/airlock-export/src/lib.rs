@@ -18,12 +18,18 @@
 #![forbid(unsafe_code)]
 
 mod annotations;
+mod concrete;
 mod convert;
 mod evaluator;
 mod export;
 
 pub use annotations::{
     ExportAnnotations, ParameterAnnotation, PreprocessedAttachment, RelationAnnotation,
+    RelationCompression,
+};
+pub use concrete::{
+    ConcreteAssignment, ConcreteEvaluationError, EvaluatedConstraint, EvaluatedRelation,
+    constraints_hold, evaluate_constraints, evaluate_relations,
 };
 pub use evaluator::{AuditEvaluator, RawRelationEntry};
 pub use export::{ExportError, REQUIRED_STWO_BASE_COMMIT, export_component};

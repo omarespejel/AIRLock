@@ -26,6 +26,8 @@ claim.
 
 - `crates/airlock-ir`: lossless AuditIR contracts, coverage, and result types.
 - `crates/airlock-lint`: generic static checks over AuditIR.
+- `crates/airlock-export`: Stwo `FrameworkEval` export, exact interaction-mask
+  mapping, and scoped concrete differential checks against Stwo evaluators.
 - `crates/airlock-boundary`: proof-neutral verifier request, observation,
   mutation-plan, outcome, and typed transcript contracts. Boundary and
   transcript result vocabularies remain separate assurance lanes.
