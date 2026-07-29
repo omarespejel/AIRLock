@@ -40,7 +40,8 @@ enum Command {
         /// Path to coverage YAML/JSON.
         #[arg(long)]
         manifest: PathBuf,
-        /// Required surface names (repeatable).
+        /// Expected surface names that must be listed (repeatable).
+        /// All listed surfaces must still be COVERED.
         #[arg(long = "require")]
         require: Vec<String>,
     },
@@ -154,27 +155,24 @@ fn cmd_coverage(manifest: PathBuf, require: Vec<String>) -> Result<()> {
     } else {
         serde_yaml::from_str(&text)?
     };
+    coverage.validate()?;
 
-    let required: Vec<&str> = if require.is_empty() {
-        coverage.surfaces.iter().map(|s| s.name.as_str()).collect()
-    } else {
-        require.iter().map(String::as_str).collect()
-    };
+    let listed: Vec<&str> = coverage
+        .surfaces
+        .iter()
+        .map(|surface| surface.name.as_str())
+        .collect();
+    let expected: Vec<&str> = require.iter().map(String::as_str).collect();
 
-    if let Err(missing) = coverage.require_listed(&required) {
+    if let Err(missing) = coverage.require_listed(&expected) {
         bail!("coverage manifest missing surfaces: {missing:?}");
     }
 
-    for name in &required {
-        let entry = coverage
-            .surfaces
-            .iter()
-            .find(|s| s.name == *name)
-            .expect("listed");
+    for entry in &coverage.surfaces {
         println!("{} => {:?}", entry.name, entry.status);
     }
 
-    if !coverage.all_required_covered(&required) {
+    if !coverage.all_required_covered(&listed) {
         bail!("required surfaces are not all COVERED");
     }
     Ok(())
