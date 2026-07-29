@@ -343,6 +343,8 @@ mod tests {
     fn mutation() -> MutationPlan {
         MutationPlan {
             seed_id: "honest-1".to_owned(),
+            seed_artifact_sha256: "11".repeat(32),
+            mutated_artifact_sha256: "22".repeat(32),
             operations: vec![MutationOperation::Drop {
                 path: path(),
                 index: 1,
@@ -444,6 +446,20 @@ mod tests {
         assert_eq!(
             report.findings[0].code,
             BoundaryFindingCode::UnexpectedMutationAccepted
+        );
+    }
+
+    #[test]
+    fn accepted_unchanged_mutation_artifact_is_unsupported() {
+        let mut unchanged = observation(CaseKind::Mutated, 2, 2, VerificationOutcome::Accepted);
+        let mutation = unchanged.mutation.as_mut().expect("mutated case");
+        mutation.mutated_artifact_sha256 = mutation.seed_artifact_sha256.clone();
+
+        let report = evaluate_boundary(&contract(2), &unchanged);
+        assert_eq!(report.verdict, BoundaryVerdict::Unsupported);
+        assert_eq!(
+            report.findings[0].code,
+            BoundaryFindingCode::InvalidBoundaryContract
         );
     }
 

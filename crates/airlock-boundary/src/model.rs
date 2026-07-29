@@ -367,6 +367,8 @@ mod tests {
             case_kind: CaseKind::Honest,
             mutation: Some(MutationPlan {
                 seed_id: "seed".to_owned(),
+                seed_artifact_sha256: "11".repeat(32),
+                mutated_artifact_sha256: "22".repeat(32),
                 operations: vec![MutationOperation::Drop {
                     path: path(),
                     index: 0,

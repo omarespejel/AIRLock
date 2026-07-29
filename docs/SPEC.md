@@ -120,9 +120,11 @@ and what the verifier consumed. An accepted run is not green if any pair
 differs. Panics, timeouts, unsupported adapters, malformed artifacts, and source
 identity mismatches fail closed.
 
-Mutation plans are structured and replayable. They identify an honest seed and
-an ordered sequence of generic structural or scalar edits; findings do not look
-up named historical defects. The crate currently interprets no Stwo proof and
+Mutation plans are structured and replayable. They identify an honest seed,
+record distinct SHA-256 digests of the canonical seed and post-mutation
+artifacts, and contain an ordered sequence of generic structural or scalar
+edits. Statically known no-op mutations are rejected; findings do not look up
+named historical defects. The crate currently interprets no Stwo proof and
 does not claim protocol, transcript, FRI, or whole-system soundness.
 
 ## Seeded defects
