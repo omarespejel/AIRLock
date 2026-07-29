@@ -3,6 +3,16 @@
 version = 4
 
 [[package]]
+name = "airlock-boundary"
+version = "0.1.0"
+dependencies = [
+ "airlock-ir",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "airlock-cli"
 version = "0.1.0"
 dependencies = [

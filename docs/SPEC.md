@@ -14,7 +14,7 @@ AIRLock is **not** a whole-system STARK soundness verifier.
 | --- | --- | --- |
 | AIR relation | `airlock air` | static gate over AuditIR |
 | Statement binding | separate | `OUT_OF_MODEL` |
-| Protocol / FRI / FS | separate | `UNINSTANTIATED` |
+| Protocol / FRI / FS | `airlock-boundary` | contract/oracle schema only; Stwo adapter `UNINSTANTIATED` |
 | Evidence / provenance | separate | `NOT_RUN` |
 
 ## Coverage statuses
@@ -112,6 +112,19 @@ Prefer fine-grained verdicts later: `CONFIRMED_SAT`, `BAD_CHALLENGE`,
 `UNSAT_SOLVER`, `UNSAT_CHECKED`, `UNKNOWN`, `OUT_OF_MODEL`. Never treat timeout
 as `UNSAT`.
 
+## Verifier-boundary contracts
+
+`airlock-boundary` records three independently meaningful cardinalities for a
+pinned verifier target: what the verifier requested, what the proof supplied,
+and what the verifier consumed. An accepted run is not green if any pair
+differs. Panics, timeouts, unsupported adapters, malformed artifacts, and source
+identity mismatches fail closed.
+
+Mutation plans are structured and replayable. They identify an honest seed and
+an ordered sequence of generic structural or scalar edits; findings do not look
+up named historical defects. The crate currently interprets no Stwo proof and
+does not claim protocol, transcript, FRI, or whole-system soundness.
+
 ## Seeded defects
 
 1. Q8 padded `(0,0)` table with free multiplicity — must fail.
@@ -126,4 +139,5 @@ M31 canonical values, encoder widths `0/1/8/127/128`, and asymmetric biases.
 
 - cvc5 / Picus / Lean
 - Circle-FRI security ledger
+- Executable Stwo verifier-boundary adapter
 - Live SparseProve exporter (feature-flagged later)

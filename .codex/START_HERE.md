@@ -20,10 +20,12 @@ The default branch is `main`. GitHub issues and pull requests record work in
 flight; copied worktrees and prior chat summaries do not override the current
 branch.
 
-AIRLock v0 contains AuditIR, static AIR checks, seeded defect fixtures, and a
-lane-aware CLI. Statement binding, protocol/FRI/Fiat-Shamir analysis, evidence
-verification, solver search, and malicious-witness injection remain separate or
-unfinished lanes unless current code and coverage say otherwise.
+AIRLock v0 contains AuditIR, static AIR checks, seeded defect fixtures,
+proof-neutral verifier-boundary contracts, and a lane-aware CLI. The boundary
+contract crate does not yet interpret Stwo proofs. Statement binding,
+protocol/FRI/Fiat-Shamir analysis, evidence verification, solver search, and
+malicious-witness injection remain separate or unfinished lanes unless current
+code and coverage say otherwise.
 
 ## Before editing
 
