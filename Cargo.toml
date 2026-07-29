@@ -1,12 +1,14 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/airlock-boundary",
     "crates/airlock-ir",
     "crates/airlock-lint",
     "crates/airlock-cli",
     "crates/airlock-export",
 ]
 default-members = [
+    "crates/airlock-boundary",
     "crates/airlock-ir",
     "crates/airlock-lint",
     "crates/airlock-cli",
