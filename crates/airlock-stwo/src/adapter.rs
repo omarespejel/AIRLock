@@ -18,9 +18,9 @@ use stwo::core::vcs_lifted::blake2_merkle::Blake2sM31MerkleChannel;
 use stwo::core::verifier::{COMPOSITION_LOG_SPLIT, VerificationError, verify};
 use thiserror::Error;
 
-use crate::STWO_SOURCE_ID;
 use crate::fixture::{DemoComponent, DemoFixture, DemoProof, build_demo_fixture};
 use crate::mutation::{StwoMutationError, mutate_proof};
+use crate::{STWO_DEMO_TARGET, STWO_SOURCE_ID};
 
 /// Replay result for one verifier layer.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -73,20 +73,14 @@ pub struct DifferentialReplay {
 
 /// Executable adapter over one deterministic real Stwo component.
 pub struct StwoBoundaryAdapter {
-    target: String,
     source_id: String,
     fixture: DemoFixture,
 }
 
 impl StwoBoundaryAdapter {
     /// Build the deterministic real-proof adapter against the pinned source.
-    pub fn new(target: impl Into<String>) -> Result<Self, StwoBoundaryError> {
-        let target = target.into();
-        if target.trim().is_empty() {
-            return Err(StwoBoundaryError::EmptyTarget);
-        }
+    pub fn new() -> Result<Self, StwoBoundaryError> {
         Ok(Self {
-            target,
             source_id: STWO_SOURCE_ID.to_owned(),
             fixture: build_demo_fixture()?,
         })
@@ -100,7 +94,7 @@ impl StwoBoundaryAdapter {
     /// Derive exact per-column sample counts from the component's verifier masks.
     pub fn contract(&self) -> Result<BoundaryContract, StwoBoundaryError> {
         derive_contract(
-            &self.target,
+            STWO_DEMO_TARGET,
             &self.source_id,
             &self.fixture.component,
             self.fixture.config,
@@ -159,7 +153,7 @@ impl StwoBoundaryAdapter {
             vec![]
         };
         let raw_observation = observation(
-            &self.target,
+            STWO_DEMO_TARGET,
             &self.source_id,
             &case_id,
             "raw_pcs",
@@ -180,7 +174,7 @@ impl StwoBoundaryAdapter {
             vec![]
         };
         let framework_observation = observation(
-            &self.target,
+            STWO_DEMO_TARGET,
             &self.source_id,
             &case_id,
             "framework",
@@ -461,9 +455,6 @@ impl From<VerificationError> for VerifierFailure {
 /// Adapter construction, replay, or evidence error.
 #[derive(Debug, Error)]
 pub enum StwoBoundaryError {
-    /// Target identity is required for stable evidence.
-    #[error("Stwo adapter target must not be empty")]
-    EmptyTarget,
     /// Honest proof generation failed.
     #[error("Stwo prover failed: {0}")]
     Prover(String),
@@ -492,8 +483,9 @@ mod tests {
 
     #[test]
     fn request_contract_comes_from_real_two_point_component_mask() {
-        let adapter = StwoBoundaryAdapter::new("stwo-demo").expect("adapter");
+        let adapter = StwoBoundaryAdapter::new().expect("adapter");
         let contract = adapter.contract().expect("contract");
+        assert_eq!(contract.target, STWO_DEMO_TARGET);
         let trace_path = BoundaryPath::new("sampled_values", vec![1, 0]);
         let trace_request = contract
             .requested
@@ -505,7 +497,7 @@ mod tests {
 
     #[test]
     fn honest_real_proof_is_consistent_across_layers() {
-        let adapter = StwoBoundaryAdapter::new("stwo-demo").expect("adapter");
+        let adapter = StwoBoundaryAdapter::new().expect("adapter");
         let replay = adapter.replay_honest().expect("replay");
         assert_eq!(replay.verdict, DifferentialVerdict::Consistent);
         assert!(replay.verdict.is_green());
@@ -515,7 +507,7 @@ mod tests {
 
     #[test]
     fn corrupted_real_query_is_rejected_by_both_layers() {
-        let adapter = StwoBoundaryAdapter::new("stwo-demo").expect("adapter");
+        let adapter = StwoBoundaryAdapter::new().expect("adapter");
         let path = adapter.first_queried_value_path().expect("query path");
         let replay = adapter
             .replay_mutation(
@@ -533,7 +525,7 @@ mod tests {
 
     #[test]
     fn unsupported_mutation_path_fails_closed() {
-        let adapter = StwoBoundaryAdapter::new("stwo-demo").expect("adapter");
+        let adapter = StwoBoundaryAdapter::new().expect("adapter");
         let error = adapter
             .replay_mutation(
                 "foreign-path",

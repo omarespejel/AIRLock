@@ -18,6 +18,9 @@ pub use mutation::{MutatedProof, StwoMutationError, mutate_proof, proof_sha256};
 /// Upstream source commit whose dependency trees are pinned by AIRLock.
 pub const STWO_UPSTREAM_BASELINE: &str = "f0d79b0fad440dcb0aaf1e20470fdbb37993ea2a";
 
+/// Stable identity of the only executable component covered by this adapter.
+pub const STWO_DEMO_TARGET: &str = "stwo-demo-transition-v1";
+
 /// Stable source identity used in boundary artifacts.
 ///
 /// `scripts/verify-stwo-checkout.sh` independently checks that the sibling
