@@ -35,6 +35,8 @@ An export is not faithful enough for `COVERED` unless it retains:
 - preprocessed `semantic_length` vs `physical_length` plus concrete values **or**
   checked generator identity + values hash;
 - commitment phases for columns and challenges;
+- a typed declaration, semantic role, and availability phase for every formal
+  parameter referenced by an expression;
 - LogUp finalization flag;
 - semantic annotations for columns on covered surfaces.
 
@@ -44,20 +46,32 @@ An export is not faithful enough for `COVERED` unless it retains:
 merges semantic annotations (preprocessed values, row support, roles). Export
 rewrites known preprocessed `Param`s to `Column` ids, requires relation
 annotations, and retains full `SecureCol` / QM31 `Const` limbs (AuditIR schema
-`0.2.0`).
+`0.3.0`).
 
-Requires sibling Stwo `../stwo` at pin `41ba5a32…` plus RelationEntry accessors
-documented in `docs/STWO_PATCH.md`.
+Requires sibling Stwo `../stwo` whose dependency trees match upstream baseline
+`f0d79b0f…`, plus the exact checked
+RelationEntry accessor patch documented in `docs/STWO_PATCH.md`. The canonical
+gate verifies both before testing the exporter. Generated evaluator
+intermediates are inlined; they are never emitted as unconstrained AuditIR
+parameters. Export fails when a referenced parameter has no declaration, a
+declaration is unused, or one name is used at conflicting field sorts. Standard
+LogUp claims and challenges are declared automatically; component-specific
+parameters require explicit annotations. A relation is represented with one
+Fiat--Shamir `alpha` and explicit powers `1, alpha, alpha^2, ...`, matching
+Stwo's `LookupElements`, rather than treating each power as independent. The
+required build pin is not presented as observed manifest provenance.
 
 ## Static findings (v0)
 
 | Code | Meaning |
 | --- | --- |
+| `INVALID_SCHEMA_IDENTITY` | manifest schema id/version does not match the implemented AuditIR contract |
 | `TABLE_MULTIPLICITY_OUTSIDE_SEMANTIC_SUPPORT` | Q8 class |
 | `NONFUNCTIONAL_LOOKUP_KEY` | key maps to multiple values on allowed rows |
 | `ADMITTED_BOUND_EXCEEDS_ENCODER` | H1 class |
 | `LOGUP_NOT_FINALIZED` | missing finalize |
 | `MISSING_SEMANTIC_ANNOTATION` | blocks COVERED when required |
+| `INVALID_PARAMETER_CONTRACT` | undeclared, unused, duplicate, leaked, or mistyped formal parameter |
 
 ## Result vocabulary
 

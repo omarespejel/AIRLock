@@ -11,8 +11,8 @@
 //! preprocessed values and row-support semantics are attached via
 //! [`ExportAnnotations`] (the semantic contract), not invented from the AIR AST.
 //!
-//! Requires a sibling Stwo checkout at `../stwo` pinned to
-//! `41ba5a322c10841bbd50c36515b89fb8b29222d8`.
+//! Requires a sibling Stwo checkout at `../stwo` whose dependency source trees
+//! match upstream baseline `f0d79b0fad440dcb0aaf1e20470fdbb37993ea2a`.
 
 #![deny(missing_docs)]
 #![forbid(unsafe_code)]
@@ -23,10 +23,10 @@ mod evaluator;
 mod export;
 
 pub use annotations::{
-    ExportAnnotations, PreprocessedAttachment, RelationAnnotation,
+    ExportAnnotations, ParameterAnnotation, PreprocessedAttachment, RelationAnnotation,
 };
 pub use evaluator::{AuditEvaluator, RawRelationEntry};
-pub use export::{export_component, ExportError, STWO_PIN_COMMIT};
+pub use export::{ExportError, REQUIRED_STWO_BASE_COMMIT, export_component};
 
 /// Crate version string embedded in exported manifests.
 pub const AIRLOCK_EXPORT_VERSION: &str = env!("CARGO_PKG_VERSION");

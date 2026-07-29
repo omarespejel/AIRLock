@@ -36,6 +36,8 @@ pub enum Severity {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum FindingCode {
+    /// Manifest schema identity or version is not the one this analyzer implements.
+    InvalidSchemaIdentity,
     /// Table multiplicity can be nonzero outside semantic support.
     TableMultiplicityOutsideSemanticSupport,
     /// Lookup key maps to multiple values on rows where multiplicity may be nonzero.
@@ -52,6 +54,8 @@ pub enum FindingCode {
     MissingSemanticAnnotation,
     /// Inverse without nonzero obligation.
     InverseWithoutNonzeroObligation,
+    /// Formal parameter declarations do not close the exported expressions.
+    InvalidParameterContract,
     /// Surface missing from coverage manifest.
     SurfaceNotListed,
     /// Other / custom.

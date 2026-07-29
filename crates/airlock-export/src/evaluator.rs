@@ -1,13 +1,13 @@
 //! AuditEvaluator: ExprEvaluator-like recorder that keeps uncompressed LogUp entries.
 
-use std::collections::HashMap;
-
-use num_traits::Zero;
+use num_traits::{One, Zero};
 use stwo::core::Fraction;
+use stwo::core::fields::FieldExpOps;
+use stwo::core::fields::m31::BaseField;
 use stwo_constraint_framework::expr::{BaseExpr, ColumnExpr, ExtExpr};
 use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
 use stwo_constraint_framework::{
-    EvalAtRow, Relation, RelationEntry, INTERACTION_TRACE_IDX, ORIGINAL_TRACE_IDX,
+    EvalAtRow, INTERACTION_TRACE_IDX, ORIGINAL_TRACE_IDX, Relation, RelationEntry,
 };
 
 /// One uncompressed relation participation captured before challenge compression.
@@ -31,15 +31,15 @@ struct FormalLogupAtRow {
 }
 
 impl FormalLogupAtRow {
-    fn new(interaction: usize) -> Self {
+    fn new(interaction: usize, log_size: u32) -> Self {
         let claimed_sum_name = "claimed_sum".to_string();
-        let column_size_name = "column_size".to_string();
+        let column_size = BaseField::from(2u32).pow(log_size.into());
         Self {
             interaction,
             fracs: vec![],
             is_finalized: true,
             cumsum_shift: ExtExpr::Param(claimed_sum_name)
-                * BaseExpr::Inv(Box::new(BaseExpr::Param(column_size_name))),
+                * BaseExpr::Inv(Box::new(BaseExpr::Const(column_size))),
         }
     }
 }
@@ -59,21 +59,12 @@ pub struct AuditEvaluator {
     /// Structural problems that would otherwise panic Stwo's ExprEvaluator.
     /// Export fails closed on these instead of crashing the host process.
     pub structural_errors: Vec<String>,
-    intermediates: HashMap<String, BaseExpr>,
-    ext_intermediates: HashMap<String, ExtExpr>,
-    ordered_intermediates: Vec<String>,
     logup: FormalLogupAtRow,
 }
 
-impl Default for AuditEvaluator {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl AuditEvaluator {
-    /// Create an empty auditor.
-    pub fn new() -> Self {
+    /// Create an empty auditor for a component with the given row-domain size.
+    pub fn new(log_size: u32) -> Self {
         Self {
             cur_var_index: 0,
             constraints: Vec::new(),
@@ -81,10 +72,7 @@ impl AuditEvaluator {
             preprocessed_columns: Vec::new(),
             logup_finalized: false,
             structural_errors: Vec::new(),
-            intermediates: HashMap::new(),
-            ext_intermediates: HashMap::new(),
-            ordered_intermediates: Vec::new(),
-            logup: FormalLogupAtRow::new(INTERACTION_TRACE_IDX),
+            logup: FormalLogupAtRow::new(INTERACTION_TRACE_IDX, log_size),
         }
     }
 
@@ -96,6 +84,7 @@ impl AuditEvaluator {
         const Z_SUFFIX: &str = "_z";
         const ALPHA_SUFFIX: &str = "_alpha";
         let z = ExtExpr::Param(relation.get_name().to_owned() + Z_SUFFIX);
+        let alpha = ExtExpr::Param(relation.get_name().to_owned() + ALPHA_SUFFIX);
         if relation.get_size() != values.len() {
             self.structural_errors.push(format!(
                 "relation `{}` arity mismatch: declared size {} but received {} values",
@@ -104,15 +93,12 @@ impl AuditEvaluator {
                 values.len()
             ));
         }
-        let alpha_powers = (0..relation.get_size()).map(|i| {
-            ExtExpr::Param(relation.get_name().to_owned() + ALPHA_SUFFIX + &i.to_string())
-        });
         values
             .iter()
-            .zip(alpha_powers)
-            .fold(ExtExpr::zero(), |acc, (value, power)| {
-                acc + power * value.clone()
+            .fold((ExtExpr::zero(), ExtExpr::one()), |(acc, power), value| {
+                (acc + power.clone() * value.clone(), power * alpha.clone())
             })
+            .0
             - z
     }
 }
@@ -168,31 +154,8 @@ impl EvalAtRow for AuditEvaluator {
         });
 
         let combined = self.combine_formal(entry.relation(), entry.values());
-        let intermediate = self.add_extension_intermediate(combined);
-        let frac = Fraction::new(entry.multiplicity().clone(), intermediate);
+        let frac = Fraction::new(entry.multiplicity().clone(), combined);
         self.write_logup_frac(frac);
-    }
-
-    fn add_intermediate(&mut self, expr: Self::F) -> Self::F {
-        let name = format!(
-            "intermediate{}",
-            self.intermediates.len() + self.ext_intermediates.len()
-        );
-        let intermediate = BaseExpr::Param(name.clone());
-        self.intermediates.insert(name.clone(), expr);
-        self.ordered_intermediates.push(name);
-        intermediate
-    }
-
-    fn add_extension_intermediate(&mut self, expr: Self::EF) -> Self::EF {
-        let name = format!(
-            "intermediate{}",
-            self.intermediates.len() + self.ext_intermediates.len()
-        );
-        let intermediate = ExtExpr::Param(name.clone());
-        self.ext_intermediates.insert(name.clone(), expr);
-        self.ordered_intermediates.push(name);
-        intermediate
     }
 
     fn get_preprocessed_column(&mut self, column: PreProcessedColumnId) -> Self::F {

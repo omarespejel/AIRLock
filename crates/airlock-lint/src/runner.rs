@@ -1,10 +1,13 @@
 //! Lint orchestration.
 
-use airlock_ir::{AuditManifest, Finding, SemanticType};
+use airlock_ir::{
+    AuditManifest, Finding, FindingCode, IR_SCHEMA_ID, IR_SCHEMA_VERSION, SemanticType, Severity,
+};
 
 use crate::encoder::lint_encoder_bounds;
 use crate::logup::lint_logup_finalization;
 use crate::lookup::{lint_lookup_functionality, lint_table_multiplicity_support};
+use crate::parameter::lint_parameter_contract;
 
 /// Options for the static gate.
 #[derive(Clone, Debug, Default)]
@@ -23,6 +26,7 @@ pub fn lint_component(
     findings.extend(lint_lookup_functionality(component));
     findings.extend(lint_encoder_bounds(component));
     findings.extend(lint_logup_finalization(component));
+    findings.extend(lint_parameter_contract(component));
 
     if options.require_semantic_annotations {
         for column in &component.columns {
@@ -45,9 +49,24 @@ pub fn lint_component(
 
 /// Lint every component in a manifest.
 pub fn lint_manifest(manifest: &AuditManifest, options: &LintOptions) -> Vec<Finding> {
-    manifest
-        .components
-        .iter()
-        .flat_map(|component| lint_component(component, options))
-        .collect()
+    let mut findings = Vec::new();
+    if manifest.schema != IR_SCHEMA_ID || manifest.schema_version != IR_SCHEMA_VERSION {
+        findings.push(Finding {
+            code: FindingCode::InvalidSchemaIdentity,
+            severity: Severity::High,
+            component: None,
+            message: format!(
+                "manifest identifies schema {}@{}, but this analyzer requires {}@{}",
+                manifest.schema, manifest.schema_version, IR_SCHEMA_ID, IR_SCHEMA_VERSION
+            ),
+            related: vec![manifest.schema.clone(), manifest.schema_version.clone()],
+        });
+    }
+    findings.extend(
+        manifest
+            .components
+            .iter()
+            .flat_map(|component| lint_component(component, options)),
+    );
+    findings
 }

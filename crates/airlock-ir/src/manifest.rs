@@ -3,7 +3,7 @@
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
-use crate::expr::{BaseExpr, ExtExpr};
+use crate::expr::{BaseExpr, ExtExpr, FieldSort};
 use crate::schema::{IR_SCHEMA_ID, IR_SCHEMA_VERSION};
 
 /// Top-level AuditIR document for one analyzed surface (or package of surfaces).
@@ -50,6 +50,9 @@ pub struct ComponentManifest {
     pub domain_size: u64,
     /// Columns.
     pub columns: Vec<ColumnDecl>,
+    /// Formal public values and verifier challenges referenced by expressions.
+    #[serde(default)]
+    pub parameters: Vec<ParameterDecl>,
     /// Polynomial constraints (post-ExprEvaluator retention).
     pub constraints: Vec<ConstraintDecl>,
     /// Uncompressed LogUp / relation entries (before challenge compression).
@@ -63,6 +66,33 @@ pub struct ComponentManifest {
     pub contract: SemanticContract,
     /// Whether LogUp was finalized exactly once.
     pub logup_finalized: bool,
+}
+
+/// A formal non-column value referenced by the AIR relation.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ParameterDecl {
+    /// Stable name used by expression `Param` nodes.
+    pub name: String,
+    /// Field containing the parameter.
+    pub field: FieldSort,
+    /// Verifier-visible semantic role.
+    pub role: ParameterRole,
+    /// Earliest phase after which the value is available.
+    pub available_after: CommitmentPhase,
+}
+
+/// Source and ownership of a formal AIR parameter.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ParameterRole {
+    /// Public input fixed by the statement.
+    PublicInput,
+    /// Public component claim, such as a LogUp claimed sum.
+    PublicClaim,
+    /// Challenge derived by the verifier transcript.
+    FiatShamirChallenge,
+    /// Explicitly reviewed role not covered by the standard categories.
+    Other,
 }
 
 /// Witness / preprocessed / interaction column declaration.

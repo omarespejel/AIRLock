@@ -15,7 +15,7 @@ or that a green AIRLock report establishes whole-system STARK security.
 | Piece | State |
 | --- | --- |
 | AuditIR schema (`airlock-ir`) | landed |
-| Static gate (`airlock-lint`) | Q8 support/functionality + encoder bound + LogUp finalize |
+| Static gate (`airlock-lint`) | schema + parameter closure + Q8 support/functionality + encoder bound + LogUp finalize |
 | CLI (`airlock`) | `air`, `coverage`, `schema` |
 | Stwo `AuditEvaluator` exporter | landed (`airlock-export`); needs RelationEntry accessors — see `docs/STWO_PATCH.md` |
 | cvc5 / Lean / phase injection | later PRs |
@@ -25,10 +25,10 @@ See [docs/SPEC.md](docs/SPEC.md) and [docs/coverage.yaml](docs/coverage.yaml).
 ## Quick start
 
 ```bash
-scripts/verify-local.sh
+# One-time exporter dependency setup. Refuses to replace an existing ../stwo.
+scripts/setup-stwo.sh
 
-# Stwo exporter (requires sibling checkout at ../stwo; see docs/STWO_PATCH.md)
-cargo +nightly-2026-01-15 test -p airlock-export --locked
+scripts/verify-local.sh
 
 cargo +nightly-2026-01-15 run -p airlock-cli -- air \
   --manifest fixtures/seeded/q8_padded_table_vulnerable.json

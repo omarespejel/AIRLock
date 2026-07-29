@@ -20,8 +20,8 @@ pub use expr::{BaseExpr, ExtExpr, FieldSort};
 pub use hash::{ContentHash, canonical_json, content_hash, hash_manifest, hash_u32_values};
 pub use manifest::{
     AuditManifest, ColumnDecl, ColumnKind, CommitmentPhase, ComponentManifest, ConstraintDecl,
-    IntegerEncoding, PreprocessedColumn, RelationEntry, RelationRole, RowClass, RowSupport,
-    SemanticContract, SemanticType, SignedEncoding,
+    IntegerEncoding, ParameterDecl, ParameterRole, PreprocessedColumn, RelationEntry, RelationRole,
+    RowClass, RowSupport, SemanticContract, SemanticType, SignedEncoding,
 };
 pub use result::{AnalysisLane, Finding, FindingCode, GateReport, LaneStatus, Severity, Verdict};
 pub use schema::{IR_SCHEMA_ID, IR_SCHEMA_VERSION};

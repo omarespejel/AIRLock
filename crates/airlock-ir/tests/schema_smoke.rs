@@ -13,7 +13,7 @@ fn m31_prime_is_correct() {
 #[test]
 fn schema_identity_stable() {
     assert_eq!(IR_SCHEMA_ID, "airlock.audit-ir");
-    assert_eq!(IR_SCHEMA_VERSION, "0.2.0");
+    assert_eq!(IR_SCHEMA_VERSION, "0.3.0");
 }
 
 #[test]
@@ -50,6 +50,7 @@ fn empty_manifest_hashes_deterministically() {
             log_size: 0,
             domain_size: 1,
             columns: vec![],
+            parameters: vec![],
             constraints: vec![],
             relations: vec![],
             preprocessed: vec![],

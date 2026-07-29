@@ -36,7 +36,7 @@ serde_json = "1.0"
 serde_yaml = "0.9"
 sha2 = "0.10"
 thiserror = "2.0"
-# Sibling Stwo checkout pinned to SparseProve real-PCS commit (path relative to repo root).
+# Sibling Stwo checkout verified against the documented upstream source baseline.
 stwo = { path = "../stwo/crates/stwo", version = "2.2.0", default-features = false, features = ["std", "prover"] }
 stwo-constraint-framework = { path = "../stwo/crates/constraint-framework", version = "2.2.0", features = ["std", "prover"] }
 

@@ -52,6 +52,7 @@ printf 'AIRLock local gate\n'
 printf '  commit: %s\n' "$CURRENT_COMMIT"
 printf '  toolchain: %s\n' "$TOOLCHAIN"
 
+scripts/verify-stwo-checkout.sh
 cargo +"$TOOLCHAIN" fmt --all -- --check
 cargo +"$TOOLCHAIN" clippy --workspace --all-targets --locked -- -D warnings
 cargo +"$TOOLCHAIN" test --workspace --all-targets --locked

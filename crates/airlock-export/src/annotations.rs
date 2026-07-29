@@ -1,7 +1,8 @@
 //! Semantic annotations merged onto an AuditEvaluator export.
 
 use airlock_ir::{
-    CommitmentPhase, PreprocessedColumn, RelationRole, RowSupport, SemanticContract, SemanticType,
+    CommitmentPhase, FieldSort, ParameterRole, PreprocessedColumn, RelationRole, RowSupport,
+    SemanticContract, SemanticType,
 };
 use indexmap::IndexMap;
 
@@ -18,6 +19,10 @@ pub struct ExportAnnotations {
     pub preprocessed: IndexMap<String, PreprocessedAttachment>,
     /// Optional column semantic types keyed by AuditIR column id.
     pub column_semantics: IndexMap<String, SemanticType>,
+    /// Explicit declarations for component-specific formal parameters.
+    ///
+    /// Standard LogUp challenges and `claimed_sum` are derived automatically.
+    pub parameters: IndexMap<String, ParameterAnnotation>,
     /// Default commitment phase for original-trace witness columns.
     pub witness_phase: CommitmentPhase,
 }
@@ -30,9 +35,21 @@ impl Default for ExportAnnotations {
             relations: IndexMap::new(),
             preprocessed: IndexMap::new(),
             column_semantics: IndexMap::new(),
+            parameters: IndexMap::new(),
             witness_phase: CommitmentPhase::Phase1Original,
         }
     }
+}
+
+/// Semantic declaration for a formal parameter not derived by the exporter.
+#[derive(Clone, Debug)]
+pub struct ParameterAnnotation {
+    /// Field containing the parameter.
+    pub field: FieldSort,
+    /// Verifier-visible role.
+    pub role: ParameterRole,
+    /// Earliest phase after which the value is available.
+    pub available_after: CommitmentPhase,
 }
 
 /// Per-relation semantic annotation.

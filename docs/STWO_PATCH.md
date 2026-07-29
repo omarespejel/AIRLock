@@ -3,13 +3,23 @@
 AIRLock's `airlock-export` path-depends on a sibling checkout:
 
 ```text
-../stwo  @  41ba5a322c10841bbd50c36515b89fb8b29222d8
+../stwo source baseline  @  f0d79b0fad440dcb0aaf1e20470fdbb37993ea2a
 ```
 
 `RelationEntry` fields are private to `stwo-constraint-framework`. External
 `EvalAtRow` overrides (including `AuditEvaluator`) need public accessors.
 
-## Required API (already applied in the local sibling used for this PR)
+Create the exact checkout from a fresh AIRLock clone with:
+
+```bash
+scripts/setup-stwo.sh
+```
+
+The setup script refuses to replace an existing `../stwo`, checks out the
+reachable upstream baseline in detached mode, applies
+`patches/stwo-relation-entry-accessors.patch`, and verifies the resulting diff.
+
+## Required API
 
 In `crates/constraint-framework/src/lib.rs`, on `RelationEntry`:
 
@@ -27,9 +37,20 @@ uncompressed LogUp tuples from outside the Stwo crate.
 This is a non-breaking additive API. Prefer landing it on the SparseProve
 sibling branch / upstream Stwo rather than forking AIRLock's view of the AST.
 
+Until that API lands upstream, `scripts/verify-local.sh` fails unless the
+sibling checkout has byte-identical `Cargo.toml`, `Cargo.lock`, `crates/stwo`,
+and `crates/constraint-framework` objects relative to the baseline, plus the
+exact checked patch. This permits descendants that change only unrelated Stwo
+examples while preventing dependency drift. Extra staged, tracked, or untracked
+changes fail the gate.
+
+The commit above is a required source baseline. It is not automatically written
+to `AuditManifest.stwo_commit`: a hardcoded value would misreport provenance
+when the dependency includes a patch. Callers may populate provenance only
+after independently verifying the complete source identity.
+
 ## Verify pin
 
 ```bash
-git -C ../stwo rev-parse HEAD
-# expect 41ba5a322c10841bbd50c36515b89fb8b29222d8 (plus the accessor patch)
+scripts/verify-stwo-checkout.sh
 ```

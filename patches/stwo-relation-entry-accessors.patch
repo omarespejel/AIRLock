@@ -1,0 +1,34 @@
+diff --git a/crates/constraint-framework/src/lib.rs b/crates/constraint-framework/src/lib.rs
+index 9ac888bf..b0ba25ca 100644
+--- a/crates/constraint-framework/src/lib.rs
++++ b/crates/constraint-framework/src/lib.rs
+@@ -266,6 +266,7 @@ pub struct RelationEntry<'a, F: Clone, EF: RelationEFTraitBound<F>, R: Relation<
+     values: &'a [F],
+ }
+ impl<'a, F: Clone, EF: RelationEFTraitBound<F>, R: Relation<F, EF>> RelationEntry<'a, F, EF, R> {
++    /// Creates a new relation entry.
+     pub const fn new(relation: &'a R, multiplicity: EF, values: &'a [F]) -> Self {
+         Self {
+             relation,
+@@ -273,6 +274,21 @@ impl<'a, F: Clone, EF: RelationEFTraitBound<F>, R: Relation<F, EF>> RelationEntr
+             values,
+         }
+     }
++
++    /// Relation being written into.
++    pub fn relation(&self) -> &'a R {
++        self.relation
++    }
++
++    /// Multiplicity of this entry (positive = use/query, negative = yield/table).
++    pub fn multiplicity(&self) -> &EF {
++        &self.multiplicity
++    }
++
++    /// Base-field tuple elements.
++    pub fn values(&self) -> &'a [F] {
++        self.values
++    }
+ }
+ 
+ #[macro_export]
