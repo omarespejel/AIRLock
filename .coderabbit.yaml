@@ -6,12 +6,10 @@ language: en-US
 
 early_access: false
 enable_free_tier: true
-tone_instructions: |
-  Prioritize AIR soundness, exporter faithfulness, integer/lookup semantics,
-  coverage fail-closed behavior, claim hygiene, and regression risk. Avoid
-  style-only remarks unless they hide correctness, security, or overclaim risk.
-  Keep comments concise and actionable. Never treat a green AIR lint as
-  whole-system STARK security.
+tone_instructions: >-
+  Prioritize soundness, exporter faithfulness, integer and lookup semantics,
+  fail-closed coverage, claim hygiene, and regressions. Keep findings concise
+  and actionable. Never treat green AIR lint as whole-system STARK security.
 
 reviews:
   profile: assertive
