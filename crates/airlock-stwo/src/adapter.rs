@@ -311,7 +311,7 @@ fn max_log_degree_bound(
         .ok_or(StwoBoundaryError::InvalidDegreeBound { composition_bound })
 }
 
-fn verify_framework(
+pub(crate) fn verify_framework(
     component: &DemoComponent,
     config: PcsConfig,
     proof: DemoProof,
@@ -437,7 +437,9 @@ fn observation(
     }
 }
 
-fn capture_verifier(run: impl FnOnce() -> Result<(), VerifierFailure>) -> VerificationOutcome {
+pub(crate) fn capture_verifier(
+    run: impl FnOnce() -> Result<(), VerifierFailure>,
+) -> VerificationOutcome {
     match catch_unwind(AssertUnwindSafe(run)) {
         Ok(Ok(())) => VerificationOutcome::Accepted,
         Ok(Err(error)) => VerificationOutcome::Rejected {
@@ -490,7 +492,7 @@ fn classify(
     }
 }
 
-struct VerifierFailure {
+pub(crate) struct VerifierFailure {
     kind: String,
     message: String,
 }

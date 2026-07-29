@@ -33,7 +33,8 @@ claim.
   transcript result vocabularies remain separate assurance lanes.
 - `crates/airlock-stwo`: pinned executable demo adapter, OODS-sample
   mutations, raw-PCS/framework differential replay, subprocess containment,
-  and deterministic replay-bundle verification. Replay bundles remain part of
+  deterministic replay-bundle verification, and one phase-bound
+  pre-commitment witness-consistency campaign. Replay bundles remain part of
   this verifier-boundary adapter; they do not mark evidence/provenance covered.
 - `scripts/demo-stwo-boundary.sh`: local honest/mutation replay, replay-bundle
   verification, and regression-generation demo. It must fail closed.

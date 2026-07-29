@@ -5,10 +5,12 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use airlock_boundary::{MutationOperation, ScalarMutation};
+use airlock_boundary::{
+    MutationOperation, ScalarMutation, WitnessCellPath, WitnessMutationOperation, WitnessPhase,
+};
 use airlock_stwo::{
-    ReplayRequest, StwoBoundaryAdapter, generate_regression_source, read_verified_replay_bundle,
-    run_isolated_replay, write_replay_bundle,
+    ReplayRequest, StwoBoundaryAdapter, StwoWitnessAdapter, generate_regression_source,
+    read_verified_replay_bundle, run_isolated_replay, write_replay_bundle,
 };
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
@@ -49,6 +51,12 @@ enum Command {
         #[arg(long)]
         output: PathBuf,
     },
+    /// Evaluate, prove, and verify the unmodified pre-commitment witness.
+    WitnessHonest,
+    /// Mutate every original-trace row while preserving the exported relation.
+    WitnessPreserving,
+    /// Mutate one original-trace row and require relation rejection.
+    WitnessViolating,
 }
 
 #[derive(Debug, Args)]
@@ -101,7 +109,63 @@ fn main() -> Result<()> {
             );
             Ok(())
         }
+        Command::WitnessHonest => run_witness_case(WitnessDemoCase::Honest),
+        Command::WitnessPreserving => run_witness_case(WitnessDemoCase::Preserving),
+        Command::WitnessViolating => run_witness_case(WitnessDemoCase::Violating),
     }
+}
+
+#[derive(Clone, Copy)]
+enum WitnessDemoCase {
+    Honest,
+    Preserving,
+    Violating,
+}
+
+fn run_witness_case(case: WitnessDemoCase) -> Result<()> {
+    let adapter = StwoWitnessAdapter::new().context("build pinned witness adapter")?;
+    let replay = match case {
+        WitnessDemoCase::Honest => adapter.replay_honest(),
+        WitnessDemoCase::Preserving => adapter.replay_mutation(
+            "constant-one-witness",
+            (0..adapter.row_count())
+                .map(|row| WitnessMutationOperation::ReplaceM31 {
+                    path: WitnessCellPath::new(
+                        WitnessPhase::Original,
+                        adapter.original_column_id(),
+                        row,
+                    ),
+                    value: ScalarMutation::Increment,
+                })
+                .collect(),
+        ),
+        WitnessDemoCase::Violating => adapter.replay_mutation(
+            "single-cell-violation",
+            vec![WitnessMutationOperation::ReplaceM31 {
+                path: WitnessCellPath::new(WitnessPhase::Original, adapter.original_column_id(), 0),
+                value: ScalarMutation::Increment,
+            }],
+        ),
+    }
+    .context("run phase-bound witness replay")?;
+    if !replay.report.verdict.is_expected() {
+        bail!(
+            "witness replay is internally consistent but produced unexpected verdict {:?}",
+            replay.report.verdict
+        );
+    }
+    println!(
+        "{}",
+        json!({
+            "status": "AIRLOCK_WITNESS_REPLAY_EXPECTED",
+            "case_id": replay.report.case_id,
+            "verdict": replay.report.verdict,
+            "audit_ir_constraints_hold": replay.observation.audit_ir_constraints_hold,
+            "proof_generation": replay.observation.proof_generation,
+            "verifier": replay.observation.verifier,
+        })
+    );
+    Ok(())
 }
 
 fn run_case(request: ReplayRequest, args: RunArgs) -> Result<()> {

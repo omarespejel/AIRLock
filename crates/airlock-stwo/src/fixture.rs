@@ -1,5 +1,6 @@
 //! Small deterministic Stwo proof used to exercise the executable adapter.
 
+use airlock_ir::M31_P;
 use num_traits::Zero;
 use stwo::core::ColumnVec;
 use stwo::core::channel::Blake2sM31Channel;
@@ -12,12 +13,13 @@ use stwo::core::vcs_lifted::blake2_merkle::{Blake2sM31MerkleChannel, Blake2sMerk
 use stwo::prover::backend::{Col, Column, CpuBackend};
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::poly::circle::{CircleEvaluation, PolyOps};
-use stwo::prover::{CommitmentSchemeProver, prove};
+use stwo::prover::{CommitmentSchemeProver, ProvingError, prove};
 use stwo_constraint_framework::{
     EvalAtRow, FrameworkComponent, FrameworkEval, ORIGINAL_TRACE_IDX, TraceLocationAllocator,
 };
 
 use crate::StwoBoundaryError;
+use thiserror::Error;
 
 /// Logarithm of the demo trace height.
 pub const DEMO_LOG_ROWS: u32 = 4;
@@ -29,7 +31,7 @@ pub type DemoComponent = FrameworkComponent<TransitionEval>;
 pub type DemoProof = StarkProof<Blake2sMerkleHasher>;
 
 /// A one-column transition relation that requests current and next-row values.
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct TransitionEval {
     log_rows: u32,
 }
@@ -60,8 +62,61 @@ pub struct DemoFixture {
     pub config: PcsConfig,
 }
 
+/// Failure to build a proof from an explicit pre-commitment witness.
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum DemoFixtureBuildError {
+    /// The witness does not contain exactly one full demo column.
+    #[error("demo witness has {actual} rows; expected {expected}")]
+    InvalidWitnessLength {
+        /// Required physical row count.
+        expected: usize,
+        /// Supplied physical row count.
+        actual: usize,
+    },
+    /// A witness cell is not a canonical M31 representative.
+    #[error("demo witness row {row} contains noncanonical M31 value {value}")]
+    NoncanonicalWitness {
+        /// Invalid physical row.
+        row: usize,
+        /// Invalid representative.
+        value: u32,
+    },
+    /// Stwo's prover detected that the committed trace violates the AIR.
+    #[error("Stwo prover rejected the witness because constraints are not satisfied")]
+    ConstraintsNotSatisfied,
+    /// Another pinned Stwo proving failure occurred.
+    #[error("Stwo prover failed: {0}")]
+    Prover(String),
+}
+
 /// Build a deterministic, real prove-and-verify fixture against pinned Stwo.
 pub fn build_demo_fixture() -> Result<DemoFixture, StwoBoundaryError> {
+    build_demo_fixture_with_values(&[0; 1 << DEMO_LOG_ROWS])
+        .map_err(|error| StwoBoundaryError::Prover(error.to_string()))
+}
+
+pub(crate) fn transition_eval() -> TransitionEval {
+    TransitionEval {
+        log_rows: DEMO_LOG_ROWS,
+    }
+}
+
+pub(crate) fn build_demo_fixture_with_values(
+    witness: &[u32],
+) -> Result<DemoFixture, DemoFixtureBuildError> {
+    let expected = 1usize << DEMO_LOG_ROWS;
+    if witness.len() != expected {
+        return Err(DemoFixtureBuildError::InvalidWitnessLength {
+            expected,
+            actual: witness.len(),
+        });
+    }
+    for (row, value) in witness.iter().copied().enumerate() {
+        if value >= M31_P {
+            return Err(DemoFixtureBuildError::NoncanonicalWitness { row, value });
+        }
+    }
+
     let config = PcsConfig::default();
     let twiddles = CpuBackend::precompute_twiddles(
         CanonicCoset::new(DEMO_LOG_ROWS + 1 + config.fri_config.log_blowup_factor)
@@ -77,9 +132,9 @@ pub fn build_demo_fixture() -> Result<DemoFixture, StwoBoundaryError> {
     tree_builder.extend_evals(vec![]);
     tree_builder.commit(prover_channel);
 
-    let mut values = Col::<CpuBackend, BaseField>::zeros(1 << DEMO_LOG_ROWS);
-    for index in 0..values.len() {
-        values.set(index, BaseField::zero());
+    let mut values = Col::<CpuBackend, BaseField>::zeros(expected);
+    for (index, value) in witness.iter().copied().enumerate() {
+        values.set(index, BaseField::from(value));
     }
     let domain = CanonicCoset::new(DEMO_LOG_ROWS).circle_domain();
     let trace: ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> =
@@ -92,17 +147,20 @@ pub fn build_demo_fixture() -> Result<DemoFixture, StwoBoundaryError> {
 
     let component = DemoComponent::new(
         &mut TraceLocationAllocator::default(),
-        TransitionEval {
-            log_rows: DEMO_LOG_ROWS,
-        },
+        transition_eval(),
         SecureField::zero(),
     );
-    let proof = prove::<CpuBackend, Blake2sM31MerkleChannel>(
+    let proof = match prove::<CpuBackend, Blake2sM31MerkleChannel>(
         &[&component],
         prover_channel,
         commitment_scheme,
-    )
-    .map_err(|error| StwoBoundaryError::Prover(error.to_string()))?;
+    ) {
+        Ok(proof) => proof,
+        Err(ProvingError::ConstraintsNotSatisfied) => {
+            return Err(DemoFixtureBuildError::ConstraintsNotSatisfied);
+        }
+        Err(error) => return Err(DemoFixtureBuildError::Prover(error.to_string())),
+    };
 
     Ok(DemoFixture {
         component,

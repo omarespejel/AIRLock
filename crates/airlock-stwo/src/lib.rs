@@ -13,6 +13,7 @@ mod regression;
 mod replay_bundle;
 mod request;
 mod temp;
+mod witness;
 
 pub use adapter::{
     DifferentialReplay, DifferentialVerdict, LayerReplay, StwoBoundaryAdapter, StwoBoundaryError,
@@ -29,6 +30,9 @@ pub use replay_bundle::{
 };
 pub use request::{
     ReplayCase, ReplayRequest, ReplayRequestError, execute_replay_request, replay_request_sha256,
+};
+pub use witness::{
+    STWO_DEMO_WITNESS_TARGET, StwoWitnessAdapter, StwoWitnessError, StwoWitnessReplay,
 };
 
 /// Upstream source commit whose dependency trees are pinned by AIRLock.

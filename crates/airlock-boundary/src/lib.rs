@@ -13,6 +13,7 @@ mod oracle;
 mod path;
 mod transcript;
 mod transcript_oracle;
+mod witness;
 
 pub use model::{
     BOUNDARY_SCHEMA_ID, BOUNDARY_SCHEMA_VERSION, BoundaryContract, BoundaryContractError,
@@ -34,4 +35,10 @@ pub use transcript::{
 pub use transcript_oracle::{
     TranscriptFinding, TranscriptFindingCode, TranscriptReport, TranscriptSeverity,
     TranscriptVerdict, evaluate_transcript,
+};
+pub use witness::{
+    ProofGenerationOutcome, WITNESS_SCHEMA_ID, WITNESS_SCHEMA_VERSION, WitnessCellPath,
+    WitnessContractError, WitnessFinding, WitnessFindingCode, WitnessMutationOperation,
+    WitnessMutationPlan, WitnessObservation, WitnessPhase, WitnessReport, WitnessVerdict,
+    evaluate_witness,
 };

@@ -30,6 +30,9 @@ REGRESSION="$OUTPUT_ROOT/corrupt-oods-sample-regression.rs"
 "$DEMO" verify --bundle "$HONEST" --worker "$WORKER"
 "$DEMO" verify --bundle "$MUTATED" --worker "$WORKER"
 "$DEMO" generate-regression --bundle "$MUTATED" --output "$REGRESSION"
+"$DEMO" witness-honest
+"$DEMO" witness-preserving
+"$DEMO" witness-violating
 
 test -s "$REGRESSION"
 if grep -Fq "$ROOT" "$REGRESSION"; then

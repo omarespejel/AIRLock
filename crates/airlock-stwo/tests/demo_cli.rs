@@ -106,6 +106,15 @@ fn cli_runs_verifies_and_renders_the_pinned_demo() {
         as_str(&regression),
     ]);
     assert!(!overwrite.status.success());
+
+    for command in ["witness-honest", "witness-preserving", "witness-violating"] {
+        let output = run(&[command]);
+        assert!(output.status.success(), "{command}");
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains("AIRLOCK_WITNESS_REPLAY_EXPECTED"),
+            "{command}"
+        );
+    }
     fs::remove_dir_all(parent).expect("remove CLI test directory");
 }
 

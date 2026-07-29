@@ -15,6 +15,7 @@ AIRLock is **not** a whole-system STARK soundness verifier.
 | AIR relation | `airlock air` | static gate over AuditIR |
 | Statement binding | separate | `OUT_OF_MODEL` |
 | Verifier boundary | `airlock-boundary`, `airlock-stwo` | contracts, one pinned executable demo adapter, and its replay records |
+| Witness consistency | `airlock-boundary`, `airlock-stwo` | one original-phase demo column, AuditIR evaluation, real proof regeneration, and full verifier replay |
 | Protocol / FRI / FS | `airlock-boundary` | typed transcript contract/oracle only; executable transcript capture remains `UNINSTANTIATED` |
 | Evidence / provenance | separate | `NOT_RUN`; replay bundles do not establish authorship or external provenance |
 
@@ -190,6 +191,32 @@ digests; nonce bytes and query positions are retained directly. The complete
 ordered trace is content addressed. This is an evidence and
 ordering contract only. The executable adapter and any Fiat--Shamir security
 reduction remain separate work.
+
+## Phase-bound witness replay
+
+`airlock-boundary` defines proof-system-neutral witness paths, mutation plans,
+proof-generation outcomes, and a fail-closed oracle. Every cell path names its
+commitment phase, AuditIR column, and physical row. Mutation plans bind the
+target, pinned source, case id, exact operations, and canonical pre/post witness
+digests. A generated proof must carry its digest and a verifier outcome; a
+prover rejection must not claim that the verifier ran.
+
+`StwoWitnessAdapter` instantiates this contract for the pinned transition demo.
+It exports the same `FrameworkEval` to AuditIR, discovers its sole original
+trace column from the exported phase metadata, applies canonical M31 mutations
+before commitment, evaluates that exact vector with the concrete AuditIR
+evaluator, and supplies the same vector to Stwo's commitment builder. If Stwo
+produces a proof, the adapter runs the complete framework verifier and records
+the outcome. The AuditIR manifest and generated proof are content addressed.
+
+The checked campaign contains three independent cases: the honest zero trace;
+an all-row shift to a constant-one trace that still satisfies the relation and
+passes the full verifier; and all 16 single-cell shifts, each of which violates
+AuditIR and is rejected by Stwo's prover as constraints-not-satisfied. This is
+evidence that the scoped exporter, concrete evaluator, committed witness, and
+real proof path agree on those cases. It is not a semantic application oracle,
+a solver search, or proof that no other witness is accepted. Public,
+interaction, and reduction-phase mutation requests fail as unsupported.
 
 ## Isolated replay records
 

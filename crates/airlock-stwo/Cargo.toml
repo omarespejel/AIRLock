@@ -9,6 +9,8 @@ description = "Pinned Stwo verifier-boundary adapter for AIRLock"
 
 [dependencies]
 airlock-boundary.workspace = true
+airlock-export.workspace = true
+airlock-ir.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 libc.workspace = true
