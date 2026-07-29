@@ -60,8 +60,16 @@ pub fn export_component<E: FrameworkEval>(
             panic_message(payload.as_ref())
         ))
     })?;
+    let relation_compressions = annotations
+        .relations
+        .iter()
+        .map(|(name, annotation)| (name.clone(), annotation.compression))
+        .collect();
     let auditor = catch_unwind(AssertUnwindSafe(|| {
-        eval.evaluate(AuditEvaluator::new(log_size))
+        eval.evaluate(AuditEvaluator::with_relation_compressions(
+            log_size,
+            relation_compressions,
+        ))
     }))
     .map_err(|payload| {
         ExportError::Faithfulness(format!(
@@ -104,6 +112,19 @@ pub fn export_component<E: FrameworkEval>(
     if audit_prep != info_prep {
         return Err(ExportError::Faithfulness(format!(
             "preprocessed id order mismatch: audit={audit_prep:?} info={info_prep:?}"
+        )));
+    }
+    let info_masks: BTreeMap<usize, Vec<Vec<isize>>> = info
+        .mask_offsets
+        .iter()
+        .enumerate()
+        .filter(|(_, masks)| !masks.is_empty())
+        .map(|(interaction, masks)| (interaction, masks.clone()))
+        .collect();
+    if auditor.mask_offsets_per_interaction() != &info_masks {
+        return Err(ExportError::Faithfulness(format!(
+            "trace mask schedule mismatch: audit={:?} info={info_masks:?}",
+            auditor.mask_offsets_per_interaction()
         )));
     }
     if !auditor.relations.is_empty() && !auditor.logup_finalized {
@@ -205,7 +226,9 @@ fn build_component(
     }
 
     let mut relations = Vec::new();
+    let mut observed_relations = HashSet::new();
     for raw in &auditor.relations {
+        observed_relations.insert(raw.relation_name.clone());
         let ann = annotations
             .relations
             .get(&raw.relation_name)
@@ -225,6 +248,13 @@ fn build_component(
             challenge_phase: ann.challenge_phase,
             source_location: Some(raw.source.clone()),
         });
+    }
+    for name in annotations.relations.keys() {
+        if !observed_relations.contains(name) {
+            return Err(ExportError::MissingAnnotation(format!(
+                "relation annotation `{name}` was not observed by AuditEvaluator"
+            )));
+        }
     }
 
     let mut preprocessed = Vec::new();

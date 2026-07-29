@@ -26,6 +26,9 @@ adapter, and a lane-aware CLI. The boundary contract crate includes typed
 transcript-policy oracles, while the Stwo adapter derives a real demo request,
 compares raw-PCS and framework outcomes for modeled OODS-sample mutations, and
 can replay them in a bounded child process with a self-verifying replay bundle.
+The exporter numbers columns per interaction tree, validates its mask schedule
+against `InfoEvaluator`, and has a concrete differential fixture against
+Stwo's `AssertEvaluator` and relation tracker.
 The local demo gates both expected outcomes and emits a path-independent Rust
 regression. The bundle remains inside the verifier-boundary lane. Other proof
 containers remain outside this adapter's coverage. The runner is not an OS

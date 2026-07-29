@@ -8,6 +8,9 @@ surfaces:
   - name: toy-silu-table-export
     status: UNSUPPORTED
     note: "Exercised in airlock-export tests; not a paper surface."
+  - name: toy-assert-evaluator-faithfulness
+    status: COVERED
+    note: "One synthetic cross-interaction AIR is compared row-for-row with Stwo AssertEvaluator over an honest nonconstant trace and every single-cell mutation. A standard LookupElements fixture compares uncompressed entries with RelationTrackerEvaluator, accepts a Stwo-generated LogUp trace in both evaluators, and rejects every exported relation cell mutation. Relation compression requires an explicit StwoLookupElements contract and an affine-geometric implementation fingerprint; custom relation protocols and arbitrary FrameworkEval components remain unsupported."
   - name: fused-stage-a-q8
     status: QUARANTINED
     note: "Quarantine until padded-table support defect is fixed upstream or modeled and fixed here."

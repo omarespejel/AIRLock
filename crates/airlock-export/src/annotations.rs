@@ -55,6 +55,8 @@ pub struct ParameterAnnotation {
 /// Per-relation semantic annotation.
 #[derive(Clone, Debug)]
 pub struct RelationAnnotation {
+    /// Compression rule the exporter is allowed to reconstruct.
+    pub compression: RelationCompression,
     /// Query vs table.
     pub role: RelationRole,
     /// Rows where multiplicity may be nonzero.
@@ -63,14 +65,11 @@ pub struct RelationAnnotation {
     pub challenge_phase: CommitmentPhase,
 }
 
-impl Default for RelationAnnotation {
-    fn default() -> Self {
-        Self {
-            role: RelationRole::Query,
-            row_support: RowSupport::All,
-            challenge_phase: CommitmentPhase::Phase2Interaction,
-        }
-    }
+/// Relation-compression contracts supported by the exporter.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RelationCompression {
+    /// Stwo's `LookupElements`: `x_0 + alpha*x_1 + ... - z`.
+    StwoLookupElements,
 }
 
 /// Preprocessed column values + lengths for linting.

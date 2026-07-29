@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 
 use airlock_export::{
     ExportAnnotations, PreprocessedAttachment, REQUIRED_STWO_BASE_COMMIT, RelationAnnotation,
-    export_component,
+    RelationCompression, export_component,
 };
 use airlock_ir::{
     BaseExpr, CommitmentPhase, ExtExpr, FieldSort, FindingCode, ParameterRole, RelationRole,
@@ -250,6 +250,7 @@ fn annotations(vulnerable: bool) -> ExportAnnotations {
     relations.insert(
         "SiLU".into(),
         RelationAnnotation {
+            compression: RelationCompression::StwoLookupElements,
             role: RelationRole::Table,
             row_support,
             challenge_phase: CommitmentPhase::Phase2Interaction,
