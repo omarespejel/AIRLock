@@ -23,6 +23,11 @@ prover.
   not automatic `CONFIRMED_SAT`.
 - No secrets, private keys, or credentials may appear in prompts, logs, issues,
   PRs, or artifacts.
+- Prover-controlled proof, shape, and transcript data must be validated before
+  it can influence Fiat-Shamir challenges. Malformed input must return an error,
+  not panic or truncate silently.
+- Every expression referenced by exported AuditIR must be defined or inlined;
+  extension-field values must retain every coordinate.
 
 ## Preferred Feedback
 
@@ -45,6 +50,11 @@ Bad review comments are generic, stylistic, or impossible to verify.
 - For `fixtures/seeded/**`, check expected FindingCode lists and that padding /
   boundary shapes are covered (table length ± 1, powers of two).
 - For `docs/**` and `README.md`, check claim scope before prose quality.
+- For `crates/airlock-cli/**`, check exit codes at unsupported and malformed
+  boundaries and reject any default command that turns incomplete coverage
+  green.
+- For `scripts/**`, check that the local gate verifies the reason an expected
+  failure occurred instead of accepting any nonzero exit.
 - For `.coderabbit.yaml` / `.pr_agent.toml`, check that reviewer instructions
   still prioritize soundness over style and keep agentic Qodo commands.
 

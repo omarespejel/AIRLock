@@ -1,0 +1,10 @@
+# Security and assurance changes require review by the repository owner.
+* @omarespejel
+
+# These paths define the trusted analysis and reviewer control planes.
+/crates/airlock-ir/ @omarespejel
+/crates/airlock-lint/ @omarespejel
+/.coderabbit.yaml @omarespejel
+/.pr_agent.toml @omarespejel
+/AGENTS.md @omarespejel
+/SECURITY.md @omarespejel

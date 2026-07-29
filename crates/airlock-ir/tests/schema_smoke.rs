@@ -1,8 +1,8 @@
 //! Unit tests for expression helpers and hashing.
 
 use airlock_ir::{
-    hash_u32_values, AuditManifest, BaseExpr, ComponentManifest, CoverageStatus, SemanticContract,
-    IR_SCHEMA_ID, IR_SCHEMA_VERSION, M31_P,
+    AuditManifest, BaseExpr, ComponentManifest, CoverageStatus, IR_SCHEMA_ID, IR_SCHEMA_VERSION,
+    M31_P, SemanticContract, hash_u32_values,
 };
 
 #[test]

@@ -60,6 +60,11 @@ reviews:
     - .pr_agent.toml
     - .qodo/**
     - AGENTS.md
+    - CLAUDE.md
+    - CONTRIBUTING.md
+    - SECURITY.md
+    - .codex/**
+    - .githooks/**
     - .github/**
     - .gitignore
     - Cargo.toml
@@ -69,6 +74,7 @@ reviews:
     - fixtures/**
     - docs/**
     - schemas/**
+    - scripts/**
     - tools/**
     - README.md
     - SPEC.md
@@ -77,6 +83,12 @@ reviews:
     - "!**/*.key"
     - "!**/*.pem"
   path_instructions:
+    - path: "AGENTS.md"
+      instructions: |
+        Review as the canonical repository policy. Flag rules that permit
+        direct-main work, timeout-as-green, public disclosure of private
+        findings, lossy exports, panic-based malformed-input handling, or bot
+        approval as a substitute for local evidence.
     - path: "crates/airlock-ir/**"
       instructions: |
         Review as the trusted AuditIR schema. Flag losslessness gaps: missing
@@ -84,6 +96,13 @@ reviews:
         generator hashes, missing commitment phases, missing row support, or
         any IR change that silently drops semantic annotations. Flag schema
         bumps without migration notes.
+    - path: "crates/airlock-export/**"
+      instructions: |
+        Review as a trusted compiler boundary. Every emitted expression must be
+        closed: inline or define intermediates and retain all extension-field
+        coordinates, phases, support, samples, and preprocessed values. Require
+        export round-trip or semantic-equivalence tests. Flag any fallback that
+        silently invents parameters or drops evaluator operations.
     - path: "crates/airlock-lint/**"
       instructions: |
         Review as the static AIR gate. Flag false greens (timeout/unmodeled as
@@ -121,6 +140,16 @@ reviews:
         Review as reviewer-control-plane. Flag instructions that weaken the
         evidence standard, encourage draft PRs by default, hide validation
         failures, or let AI reviewers focus on style instead of soundness.
+    - path: "scripts/**"
+      instructions: |
+        Review local gates as release controls. Expected-failure checks must
+        assert the intended error marker, use pinned dependencies/toolchains,
+        clean temporary files, and fail on partial or skipped validation.
+    - path: "SECURITY.md"
+      instructions: |
+        Check that suspected vulnerabilities are routed privately, upstream
+        findings go to the upstream owner, and public fixtures cannot disclose
+        embargoed exploit details.
     - path: ".coderabbit.yaml"
       instructions: |
         Review as CodeRabbit control plane. Flag weakened profiles, path filters
@@ -165,6 +194,12 @@ reviews:
         instructions: |
           Warn if the PR body omits exact local validation commands
           (cargo test / clippy / airlock air --manifest ...).
+      - mode: error
+        name: "No unbound exported expression"
+        instructions: |
+          Fail if emitted AuditIR references a parameter, intermediate, limb,
+          challenge, column, or preprocessed value that the same artifact does
+          not define or bind.
 
 chat:
   auto_reply: false

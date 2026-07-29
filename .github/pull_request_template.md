@@ -2,6 +2,8 @@
 
 -
 
+Closes:
+
 ## Assurance Lane
 
 - [ ] air-ir (AuditIR / schema / exporter)
@@ -19,20 +21,38 @@
 - [ ] docs or public claims
 - [ ] no claim-boundary change
 
+## Security and Coverage
+
+- Coverage entries changed:
+- Seeded vulnerable/fixed cases changed:
+- Upstream commit or paper pinned:
+- [ ] No private or embargoed vulnerability details are disclosed.
+- [ ] Unmodeled, unsupported, quarantined, unknown, and timed-out work remains blocked.
+
 ## Validation
 
-List exact commands and results:
+Commit tested:
+
+List exact commands and results. The canonical command is:
 
 ```bash
-cargo +nightly-2026-01-15 test --locked
-cargo +nightly-2026-01-15 clippy --locked -- -D warnings
-# when CLI exists:
-# cargo +nightly-2026-01-15 run -p airlock-cli -- air --manifest fixtures/...
+scripts/verify-local.sh
 ```
+
+Result:
 
 ## Reviewer Focus
 
 -
+
+## Reviewer State
+
+- [ ] CodeRabbit reviewed the latest relevant diff, or unavailability is recorded below.
+- [ ] Qodo reviewed the latest relevant diff, or unavailability is recorded below.
+- [ ] All actionable correctness, security, and claim-scope threads are resolved.
+- [ ] Five quiet minutes passed after the last push or reviewer activity.
+
+Reviewer unavailability or manual replacement review:
 
 ## Non-Claims
 

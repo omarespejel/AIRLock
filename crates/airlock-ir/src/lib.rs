@@ -15,7 +15,7 @@ mod schema;
 
 pub use coverage::{CoverageManifest, CoverageStatus, SurfaceEntry};
 pub use expr::{BaseExpr, ExtExpr, FieldSort};
-pub use hash::{canonical_json, content_hash, hash_manifest, hash_u32_values, ContentHash};
+pub use hash::{ContentHash, canonical_json, content_hash, hash_manifest, hash_u32_values};
 pub use manifest::{
     AuditManifest, ColumnDecl, ColumnKind, CommitmentPhase, ComponentManifest, ConstraintDecl,
     IntegerEncoding, PreprocessedColumn, RelationEntry, RelationRole, RowClass, RowSupport,

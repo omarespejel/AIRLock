@@ -1,16 +1,13 @@
-# Copilot / AI-agent instructions — AIRLock
+# Copilot Instructions
 
-This repository builds adversarial AIR assurance tooling for Stwo.
+Read and follow `/AGENTS.md`, then `/.codex/START_HERE.md`. They are the
+canonical repository instructions and review rules.
 
-## Priorities
+When reviewing or generating code, prioritize:
 
-1. Soundness of AuditIR and static gates over style.
-2. Fail closed: UNKNOWN / UNSUPPORTED / timeout are never green.
-3. Keep AIR, statement-binding, protocol, and evidence lanes separate.
-4. Seeded defects must be caught by generic rules.
+- lossless AuditIR and exporter behavior;
+- fail-closed results and explicit coverage;
+- adversarial regressions at untrusted boundaries;
+- separation of AIR, statement, protocol/transcript, and evidence claims.
 
-## Do not
-
-- Claim whole-system STARK security from an AIR lint.
-- Hard-code named attacks instead of generic support/encoder/phase checks.
-- Quietly omit executable surfaces from the coverage manifest.
+Do not duplicate or weaken the rules in `AGENTS.md`.

@@ -1,0 +1,6 @@
+schema: airlock.coverage
+surfaces:
+  - name: component-a
+    status: COVERED
+  - name: component-b
+    status: COVERED

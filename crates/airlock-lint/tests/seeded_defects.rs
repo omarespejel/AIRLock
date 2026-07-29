@@ -3,9 +3,9 @@
 use airlock_ir::{
     AuditManifest, BaseExpr, ColumnDecl, ColumnKind, CommitmentPhase, ComponentManifest,
     FindingCode, IntegerEncoding, PreprocessedColumn, RelationEntry, RelationRole, RowSupport,
-    SemanticContract, SemanticType, SignedEncoding, Severity,
+    SemanticContract, SemanticType, Severity, SignedEncoding,
 };
-use airlock_lint::{lint_component, LintOptions};
+use airlock_lint::{LintOptions, lint_component};
 
 const SEMANTIC: u64 = 16;
 const PHYSICAL: u64 = 32;
@@ -203,9 +203,11 @@ fn logup_unfinalized_is_flagged() {
     let mut component = q8_component(false);
     component.logup_finalized = false;
     let findings = lint_component(&component, &LintOptions::default());
-    assert!(findings
-        .iter()
-        .any(|f| f.code == FindingCode::LogupNotFinalized));
+    assert!(
+        findings
+            .iter()
+            .any(|f| f.code == FindingCode::LogupNotFinalized)
+    );
 }
 
 #[test]
@@ -230,11 +232,12 @@ fn gate_report_never_collapses_lanes_to_sound_true() {
     let findings = lint_component(&component, &LintOptions::default());
     let report = airlock_ir::GateReport::from_static_findings("0.1.0", findings);
     assert_eq!(report.overall_release_status, "BLOCKED");
-    assert!(report
-        .lanes
-        .iter()
-        .any(|l| l.lane == airlock_ir::AnalysisLane::Protocol
-            && l.status == "UNINSTANTIATED"));
+    assert!(
+        report
+            .lanes
+            .iter()
+            .any(|l| l.lane == airlock_ir::AnalysisLane::Protocol && l.status == "UNINSTANTIATED")
+    );
 }
 
 #[test]

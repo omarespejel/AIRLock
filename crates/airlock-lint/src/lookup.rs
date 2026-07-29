@@ -39,11 +39,8 @@ pub fn lint_table_multiplicity_support(component: &ComponentManifest) -> Vec<Fin
         };
 
         let semantic_length = support.semantic_length;
-        if multiplicity_may_escape_support(
-            &relation.row_support,
-            &relation.multiplicity,
-            &support,
-        ) {
+        if multiplicity_may_escape_support(&relation.row_support, &relation.multiplicity, &support)
+        {
             findings.push(Finding {
                 code: FindingCode::TableMultiplicityOutsideSemanticSupport,
                 severity: Severity::Critical,
@@ -137,10 +134,9 @@ pub fn lint_lookup_functionality(component: &ComponentManifest) -> Vec<Finding> 
         if relation.tuple.len() < 2 {
             continue;
         }
-        let (Some(key_id), Some(value_id)) = (
-            column_id(&relation.tuple[0]),
-            column_id(&relation.tuple[1]),
-        ) else {
+        let (Some(key_id), Some(value_id)) =
+            (column_id(&relation.tuple[0]), column_id(&relation.tuple[1]))
+        else {
             continue;
         };
         let (Some(keys), Some(values)) = (prep.get(key_id), prep.get(value_id)) else {
@@ -163,9 +159,7 @@ pub fn lint_lookup_functionality(component: &ComponentManifest) -> Vec<Finding> 
         let allowed_end = match &relation.row_support {
             RowSupport::Range { end, .. } => (*end).min(physical),
             RowSupport::All => physical,
-            RowSupport::Classes { classes }
-                if classes.contains(&airlock_ir::RowClass::Padding) =>
-            {
+            RowSupport::Classes { classes } if classes.contains(&airlock_ir::RowClass::Padding) => {
                 physical
             }
             RowSupport::Classes { .. } => semantic,
