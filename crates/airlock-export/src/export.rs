@@ -7,9 +7,12 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use airlock_ir::{
     AuditManifest, BaseExpr, ColumnDecl, ColumnKind, CommitmentPhase, ComponentManifest,
     ConstraintDecl, ExtExpr, FieldSort, ParameterDecl, ParameterRole, RelationEntry, RowSupport,
-    SemanticType,
+    STWO_MAX_CIRCLE_DOMAIN_LOG_SIZE, STWO_MIN_CIRCLE_DOMAIN_LOG_SIZE, SemanticType,
 };
-use stwo::core::poly::circle::MAX_CIRCLE_DOMAIN_LOG_SIZE;
+use stwo::core::poly::circle::{
+    MAX_CIRCLE_DOMAIN_LOG_SIZE as UPSTREAM_MAX_CIRCLE_DOMAIN_LOG_SIZE,
+    MIN_CIRCLE_DOMAIN_LOG_SIZE as UPSTREAM_MIN_CIRCLE_DOMAIN_LOG_SIZE,
+};
 use stwo_constraint_framework::{
     FrameworkEval, INTERACTION_TRACE_IDX, InfoEvaluator, PREPROCESSED_TRACE_IDX,
 };
@@ -18,6 +21,9 @@ use crate::AIRLOCK_EXPORT_VERSION;
 use crate::annotations::ExportAnnotations;
 use crate::convert::{ConvertError, convert_base, convert_ext, multiplicity_as_base};
 use crate::evaluator::AuditEvaluator;
+
+const _: () = assert!(STWO_MIN_CIRCLE_DOMAIN_LOG_SIZE == UPSTREAM_MIN_CIRCLE_DOMAIN_LOG_SIZE);
+const _: () = assert!(STWO_MAX_CIRCLE_DOMAIN_LOG_SIZE == UPSTREAM_MAX_CIRCLE_DOMAIN_LOG_SIZE);
 
 /// Upstream Stwo source baseline required by the checked accessor patch.
 ///
@@ -129,9 +135,9 @@ fn build_component(
     max_constraint_log_degree_bound: u32,
     annotations: ExportAnnotations,
 ) -> Result<ComponentManifest, ExportError> {
-    if log_size > MAX_CIRCLE_DOMAIN_LOG_SIZE {
+    if !(STWO_MIN_CIRCLE_DOMAIN_LOG_SIZE..=STWO_MAX_CIRCLE_DOMAIN_LOG_SIZE).contains(&log_size) {
         return Err(ExportError::Faithfulness(format!(
-            "log_size {log_size} exceeds Stwo's maximum Circle domain log size {MAX_CIRCLE_DOMAIN_LOG_SIZE}"
+            "log_size {log_size} is outside Stwo's Circle domain range [{STWO_MIN_CIRCLE_DOMAIN_LOG_SIZE}, {STWO_MAX_CIRCLE_DOMAIN_LOG_SIZE}]"
         )));
     }
     let domain_size = 1u64 << log_size;

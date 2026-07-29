@@ -1,6 +1,6 @@
 {
   "schema": "airlock.audit-ir",
-  "schema_version": "0.3.0",
+  "schema_version": "0.4.0",
   "airlock_version": "0.1.0",
   "components": [
     {
@@ -15,6 +15,7 @@
       "declared_max_constraint_log_degree_bound": 3,
       "contract": {
         "public_inputs": [],
+        "public_claims": [],
         "public_outputs": [],
         "integer_obligations": [
           {

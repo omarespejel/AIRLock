@@ -11,9 +11,15 @@ TMP_PATCH="$(mktemp "${TMPDIR:-/tmp}/airlock-stwo-patch.XXXXXX")"
 trap 'rm -f "$TMP_PATCH"' EXIT
 
 fail() {
-  printf 'FAIL: %s\n' "$*" >&2
-  exit 1
+    printf 'FAIL: %s\n' "$*" >&2
+    exit 1
 }
+
+# Git exports repository-local variables to hooks. Clear them before querying
+# the sibling checkout so `git -C` cannot accidentally read AIRLock's objects.
+while IFS= read -r variable; do
+  unset "$variable"
+done < <(git rev-parse --local-env-vars)
 
 [[ -d "$STWO_DIR/.git" ]] || fail "missing sibling Stwo checkout at $STWO_DIR; run scripts/setup-stwo.sh"
 [[ -f "$PATCH" ]] || fail "missing checked accessor patch at $PATCH"

@@ -38,8 +38,16 @@ pub enum Severity {
 pub enum FindingCode {
     /// Manifest schema identity or version is not the one this analyzer implements.
     InvalidSchemaIdentity,
+    /// Manifest or component shape is inconsistent with the Stwo execution domain.
+    InvalidManifestStructure,
+    /// Column declarations are ambiguous, inconsistent, or do not cover expression reads.
+    InvalidColumnContract,
     /// Preprocessed data, length, source, or content hash is inconsistent.
     InvalidPreprocessedContract,
+    /// A declared row support is empty, duplicated, reversed, or outside the domain.
+    InvalidRowSupport,
+    /// An integer encoder declaration is malformed independently of its admitted bound.
+    InvalidEncoderContract,
     /// Table multiplicity can be nonzero outside semantic support.
     TableMultiplicityOutsideSemanticSupport,
     /// Lookup key maps to multiple values on rows where multiplicity may be nonzero.

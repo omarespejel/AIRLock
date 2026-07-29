@@ -15,12 +15,14 @@ or that a green AIRLock report establishes whole-system STARK security.
 | Piece | State |
 | --- | --- |
 | AuditIR schema (`airlock-ir`) | landed |
-| Static gate (`airlock-lint`) | schema + parameter closure + preprocessed integrity + Q8 support/functionality + encoder bound + LogUp finalize |
+| Static gate (`airlock-lint`) | schema/shape + parameter/phase closure + preprocessed integrity + Q8 support/functionality + encoder bound + LogUp finalize |
 | CLI (`airlock`) | `air`, `coverage`, `schema` |
 | Stwo `AuditEvaluator` exporter | landed (`airlock-export`); needs RelationEntry accessors — see `docs/STWO_PATCH.md` |
 | cvc5 / Lean / phase injection | later PRs |
 
 See [docs/SPEC.md](docs/SPEC.md) and [docs/coverage.yaml](docs/coverage.yaml).
+The fail-closed boundary profiles are specified in
+[docs/PARAMETER_BOUNDARIES.md](docs/PARAMETER_BOUNDARIES.md).
 
 ## Quick start
 

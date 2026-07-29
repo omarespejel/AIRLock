@@ -242,6 +242,7 @@ fn exact_typed_parameter_contract_passes() {
         role: ParameterRole::PublicInput,
         available_after: CommitmentPhase::Phase0Public,
     }];
+    component.contract.public_inputs = vec!["public_digest".into()];
 
     let findings = lint_component(&component, &LintOptions::default());
     assert!(

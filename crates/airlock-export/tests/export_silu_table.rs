@@ -45,6 +45,8 @@ struct CountedMetadataAir {
     degree_calls: Cell<usize>,
 }
 
+struct UndersizedAir;
+
 impl FrameworkEval for SiluTableAir {
     fn log_size(&self) -> u32 {
         LOG_SIZE
@@ -204,6 +206,20 @@ impl FrameworkEval for CountedMetadataAir {
     }
 }
 
+impl FrameworkEval for UndersizedAir {
+    fn log_size(&self) -> u32 {
+        0
+    }
+
+    fn max_constraint_log_degree_bound(&self) -> u32 {
+        1
+    }
+
+    fn evaluate<E: EvalAtRow>(&self, eval: E) -> E {
+        eval
+    }
+}
+
 fn table_values() -> (Vec<u32>, Vec<u32>) {
     let physical = 1u64 << LOG_SIZE;
     let mut codes = Vec::with_capacity(physical as usize);
@@ -270,6 +286,7 @@ fn annotations(vulnerable: bool) -> ExportAnnotations {
             "silu-table-fixed".into()
         },
         contract: SemanticContract {
+            public_claims: vec!["claimed_sum".into()],
             reference_semantics_id: Some("q8-silu-table-v1".into()),
             assumptions: vec![
                 "LogUp acceptance implies exact multiset balance under separately stated assumptions"
@@ -353,6 +370,10 @@ fn exported_constraints_inline_generated_intermediates() {
     assert_eq!(claimed_sum.field, FieldSort::Qm31);
     assert_eq!(claimed_sum.role, ParameterRole::PublicClaim);
     assert_eq!(claimed_sum.available_after, CommitmentPhase::Phase0Public);
+    assert_eq!(
+        manifest.components[0].contract.public_claims,
+        vec!["claimed_sum".to_string()]
+    );
 
     for challenge in manifest.components[0]
         .parameters
@@ -396,10 +417,14 @@ fn explicit_framework_intermediates_are_inlined() {
 fn export_rejects_domains_larger_than_stwo_supports() {
     let err = export_component(&OversizedAir, ExportAnnotations::default())
         .expect_err("unsupported Circle domain must fail closed");
-    assert!(
-        err.to_string().contains("maximum Circle domain log size"),
-        "{err}"
-    );
+    assert!(err.to_string().contains("Circle domain range"), "{err}");
+}
+
+#[test]
+fn export_rejects_domains_smaller_than_stwo_supports() {
+    let err = export_component(&UndersizedAir, ExportAnnotations::default())
+        .expect_err("unsupported Circle domain must fail closed");
+    assert!(err.to_string().contains("Circle domain range"), "{err}");
 }
 
 #[test]
