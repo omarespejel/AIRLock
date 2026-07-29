@@ -6,7 +6,6 @@ version = 4
 name = "airlock-boundary"
 version = "0.1.0"
 dependencies = [
- "airlock-ir",
  "serde",
  "serde_json",
  "thiserror",

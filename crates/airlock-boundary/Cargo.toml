@@ -8,7 +8,6 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-airlock-ir.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 

@@ -68,24 +68,6 @@ pub enum FindingCode {
     InvalidParameterContract,
     /// Surface missing from coverage manifest.
     SurfaceNotListed,
-    /// Verifier-boundary contract or observation is malformed.
-    InvalidBoundaryContract,
-    /// Verifier accepted a proof whose supplied cardinality differs from its request.
-    BoundaryCardinalityMismatch,
-    /// Verifier accepted proof data that was not consumed exactly.
-    IgnoredProofData,
-    /// Verifier accepted without consuming everything it requested.
-    RequestedDataNotConsumed,
-    /// Verifier panicked or aborted on untrusted proof input.
-    VerifierPanic,
-    /// Honest prover output was rejected by the matching verifier.
-    HonestBaselineRejected,
-    /// Boundary execution timed out and remains inconclusive.
-    BoundaryTimeout,
-    /// Boundary target is not modeled by the current adapter.
-    BoundaryUnsupported,
-    /// Declared cross-layer verifier contract was violated.
-    LayerContractDivergence,
     /// Other / custom.
     Other,
 }

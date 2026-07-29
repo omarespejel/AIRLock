@@ -2,13 +2,61 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use airlock_ir::{Finding, FindingCode, Severity};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     BoundaryContract, BoundaryContractError, BoundaryObservation, BoundaryPath, CaseKind,
     VerificationOutcome,
 };
+
+/// Severity for verifier-boundary findings.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum BoundarySeverity {
+    /// Informational coverage or execution status.
+    Informational,
+    /// High-confidence invariant violation that blocks the modeled lane.
+    High,
+}
+
+/// Stable verifier-boundary finding codes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum BoundaryFindingCode {
+    /// Verifier-boundary contract or observation is malformed.
+    InvalidBoundaryContract,
+    /// Verifier accepted a proof whose supplied cardinality differs from its request.
+    BoundaryCardinalityMismatch,
+    /// Verifier accepted proof data that was not consumed exactly.
+    IgnoredProofData,
+    /// Verifier accepted without consuming everything it requested.
+    RequestedDataNotConsumed,
+    /// Verifier panicked or aborted on untrusted proof input.
+    VerifierPanic,
+    /// Honest prover output was rejected by the matching verifier.
+    HonestBaselineRejected,
+    /// A mutated proof was unexpectedly accepted.
+    UnexpectedMutationAccepted,
+    /// Boundary execution timed out and remains inconclusive.
+    BoundaryTimeout,
+    /// Boundary target is not modeled by the current adapter.
+    BoundaryUnsupported,
+}
+
+/// One verifier-boundary finding.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BoundaryFinding {
+    /// Stable finding identity.
+    pub code: BoundaryFindingCode,
+    /// Blocking importance inside the modeled lane.
+    pub severity: BoundarySeverity,
+    /// Human-readable diagnostic.
+    pub message: String,
+    /// Stable paths, layers, or labels related to the finding.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub related: Vec<String>,
+}
 
 /// Fail-closed verdict for one boundary execution.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -51,7 +99,7 @@ pub struct BoundaryReport {
     /// Final boundary verdict.
     pub verdict: BoundaryVerdict,
     /// Generic invariant findings.
-    pub findings: Vec<Finding>,
+    pub findings: Vec<BoundaryFinding>,
 }
 
 /// Evaluate one verifier execution against its independently derived request contract.
@@ -64,8 +112,8 @@ pub fn evaluate_boundary(
             observation,
             BoundaryVerdict::Unsupported,
             vec![finding(
-                FindingCode::InvalidBoundaryContract,
-                Severity::High,
+                BoundaryFindingCode::InvalidBoundaryContract,
+                BoundarySeverity::High,
                 format!("invalid boundary artifact: {error}"),
                 vec![],
             )],
@@ -77,8 +125,8 @@ pub fn evaluate_boundary(
             observation,
             BoundaryVerdict::Panic,
             vec![finding(
-                FindingCode::VerifierPanic,
-                Severity::High,
+                BoundaryFindingCode::VerifierPanic,
+                BoundarySeverity::High,
                 format!(
                     "verifier panicked on {} case: {message}",
                     case_name(observation)
@@ -90,8 +138,8 @@ pub fn evaluate_boundary(
             observation,
             BoundaryVerdict::Timeout,
             vec![finding(
-                FindingCode::BoundaryTimeout,
-                Severity::Informational,
+                BoundaryFindingCode::BoundaryTimeout,
+                BoundarySeverity::Informational,
                 "boundary execution timed out; no security conclusion is available".to_owned(),
                 vec![observation.layer.clone()],
             )],
@@ -100,8 +148,8 @@ pub fn evaluate_boundary(
             observation,
             BoundaryVerdict::Unsupported,
             vec![finding(
-                FindingCode::BoundaryUnsupported,
-                Severity::Informational,
+                BoundaryFindingCode::BoundaryUnsupported,
+                BoundarySeverity::Informational,
                 format!("boundary adapter does not support this case: {reason}"),
                 vec![observation.layer.clone()],
             )],
@@ -112,8 +160,8 @@ pub fn evaluate_boundary(
                     observation,
                     BoundaryVerdict::Counterexample,
                     vec![finding(
-                        FindingCode::HonestBaselineRejected,
-                        Severity::High,
+                        BoundaryFindingCode::HonestBaselineRejected,
+                        BoundarySeverity::High,
                         format!("honest proof was rejected as {kind}: {message}"),
                         vec![observation.layer.clone()],
                     )],
@@ -159,8 +207,8 @@ fn evaluate_accepted(
     let request_supply = mismatches(&requested, &supplied);
     if !request_supply.is_empty() {
         findings.push(finding(
-            FindingCode::BoundaryCardinalityMismatch,
-            Severity::High,
+            BoundaryFindingCode::BoundaryCardinalityMismatch,
+            BoundarySeverity::High,
             "verifier accepted proof data whose cardinality differs from its request".to_owned(),
             request_supply,
         ));
@@ -169,8 +217,8 @@ fn evaluate_accepted(
     let supply_consumption = mismatches(&supplied, &consumed);
     if !supply_consumption.is_empty() {
         findings.push(finding(
-            FindingCode::IgnoredProofData,
-            Severity::High,
+            BoundaryFindingCode::IgnoredProofData,
+            BoundarySeverity::High,
             "verifier accepted proof data that was not consumed exactly".to_owned(),
             supply_consumption,
         ));
@@ -179,10 +227,19 @@ fn evaluate_accepted(
     let request_consumption = mismatches(&requested, &consumed);
     if !request_consumption.is_empty() {
         findings.push(finding(
-            FindingCode::RequestedDataNotConsumed,
-            Severity::High,
+            BoundaryFindingCode::RequestedDataNotConsumed,
+            BoundarySeverity::High,
             "verifier accepted without consuming exactly the data it requested".to_owned(),
             request_consumption,
+        ));
+    }
+
+    if findings.is_empty() && observation.case_kind == CaseKind::Mutated {
+        findings.push(finding(
+            BoundaryFindingCode::UnexpectedMutationAccepted,
+            BoundarySeverity::High,
+            "verifier accepted a mutated proof without a declared acceptance contract".to_owned(),
+            vec![observation.layer.clone()],
         ));
     }
 
@@ -197,7 +254,7 @@ fn evaluate_accepted(
 fn report(
     observation: &BoundaryObservation,
     verdict: BoundaryVerdict,
-    findings: Vec<Finding>,
+    findings: Vec<BoundaryFinding>,
 ) -> BoundaryReport {
     BoundaryReport {
         target: observation.target.clone(),
@@ -210,15 +267,14 @@ fn report(
 }
 
 fn finding(
-    code: FindingCode,
-    severity: Severity,
+    code: BoundaryFindingCode,
+    severity: BoundarySeverity,
     message: String,
     related: Vec<String>,
-) -> Finding {
-    Finding {
+) -> BoundaryFinding {
+    BoundaryFinding {
         code,
         severity,
-        component: None,
         message,
         related,
     }
@@ -351,16 +407,15 @@ mod tests {
         );
         assert_eq!(report.verdict, BoundaryVerdict::Counterexample);
         assert!(
-            report
-                .findings
-                .iter()
-                .any(|finding| { finding.code == FindingCode::BoundaryCardinalityMismatch })
+            report.findings.iter().any(|finding| {
+                finding.code == BoundaryFindingCode::BoundaryCardinalityMismatch
+            })
         );
         assert!(
             report
                 .findings
                 .iter()
-                .any(|finding| { finding.code == FindingCode::RequestedDataNotConsumed })
+                .any(|finding| { finding.code == BoundaryFindingCode::RequestedDataNotConsumed })
         );
     }
 
@@ -375,7 +430,41 @@ mod tests {
             report
                 .findings
                 .iter()
-                .any(|finding| finding.code == FindingCode::IgnoredProofData)
+                .any(|finding| finding.code == BoundaryFindingCode::IgnoredProofData)
+        );
+    }
+
+    #[test]
+    fn accepted_count_preserving_mutation_is_never_green() {
+        let report = evaluate_boundary(
+            &contract(2),
+            &observation(CaseKind::Mutated, 2, 2, VerificationOutcome::Accepted),
+        );
+        assert_eq!(report.verdict, BoundaryVerdict::Counterexample);
+        assert_eq!(
+            report.findings[0].code,
+            BoundaryFindingCode::UnexpectedMutationAccepted
+        );
+    }
+
+    #[test]
+    fn malformed_rejection_category_is_unsupported() {
+        let report = evaluate_boundary(
+            &contract(2),
+            &observation(
+                CaseKind::Mutated,
+                1,
+                0,
+                VerificationOutcome::Rejected {
+                    kind: " Invalid Structure ".to_owned(),
+                    message: "bad proof".to_owned(),
+                },
+            ),
+        );
+        assert_eq!(report.verdict, BoundaryVerdict::Unsupported);
+        assert_eq!(
+            report.findings[0].code,
+            BoundaryFindingCode::InvalidBoundaryContract
         );
     }
 
@@ -394,7 +483,7 @@ mod tests {
         );
         assert_eq!(report.verdict, BoundaryVerdict::Panic);
         assert!(!report.verdict.is_green());
-        assert_eq!(report.findings[0].code, FindingCode::VerifierPanic);
+        assert_eq!(report.findings[0].code, BoundaryFindingCode::VerifierPanic);
     }
 
     #[test]
@@ -412,7 +501,10 @@ mod tests {
             ),
         );
         assert_eq!(report.verdict, BoundaryVerdict::Counterexample);
-        assert_eq!(report.findings[0].code, FindingCode::HonestBaselineRejected);
+        assert_eq!(
+            report.findings[0].code,
+            BoundaryFindingCode::HonestBaselineRejected
+        );
     }
 
     #[test]
@@ -450,7 +542,7 @@ mod tests {
         assert_eq!(report.verdict, BoundaryVerdict::Unsupported);
         assert_eq!(
             report.findings[0].code,
-            FindingCode::InvalidBoundaryContract
+            BoundaryFindingCode::InvalidBoundaryContract
         );
     }
 
@@ -462,7 +554,7 @@ mod tests {
         assert_eq!(report.verdict, BoundaryVerdict::Unsupported);
         assert_eq!(
             report.findings[0].code,
-            FindingCode::InvalidBoundaryContract
+            BoundaryFindingCode::InvalidBoundaryContract
         );
 
         let mut wrong_commit = observation(CaseKind::Honest, 2, 2, VerificationOutcome::Accepted);
@@ -471,7 +563,7 @@ mod tests {
         assert_eq!(report.verdict, BoundaryVerdict::Unsupported);
         assert_eq!(
             report.findings[0].code,
-            FindingCode::InvalidBoundaryContract
+            BoundaryFindingCode::InvalidBoundaryContract
         );
     }
 }

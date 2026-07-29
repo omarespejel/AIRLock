@@ -16,4 +16,7 @@ pub use model::{
     BoundaryObservation, BoundaryPath, CaseKind, CountAtPath, OutcomeClass, VerificationOutcome,
 };
 pub use mutation::{MutationOperation, MutationPlan, MutationPlanError, ScalarMutation};
-pub use oracle::{BoundaryReport, BoundaryVerdict, evaluate_boundary};
+pub use oracle::{
+    BoundaryFinding, BoundaryFindingCode, BoundaryReport, BoundarySeverity, BoundaryVerdict,
+    evaluate_boundary,
+};

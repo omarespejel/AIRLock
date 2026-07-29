@@ -7,6 +7,7 @@ use crate::BoundaryPath;
 
 /// A deterministic sequence of mutations applied to an honest proof seed.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MutationPlan {
     /// Stable identity of the honest proof or fixture being mutated.
     pub seed_id: String,
@@ -48,7 +49,7 @@ impl MutationPlan {
 
 /// One structural or scalar proof mutation.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum MutationOperation {
     /// Delete one entry from a nested proof container.
     Drop {
@@ -91,7 +92,7 @@ pub enum MutationOperation {
 
 /// Common scalar mutations that adapters can map to native proof types.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum ScalarMutation {
     /// Additive identity.
     Zero,
@@ -159,5 +160,20 @@ mod tests {
             operations: vec![],
         };
         assert_eq!(plan.validate(), Err(MutationPlanError::EmptyOperations));
+    }
+
+    #[test]
+    fn unknown_nested_mutation_fields_are_rejected() {
+        let json = r#"{
+            "seed_id":"seed",
+            "operations":[{
+                "kind":"drop",
+                "path":{"field":"proof","indices":[]},
+                "index":0,
+                "ignored":true
+            }]
+        }"#;
+        let error = serde_json::from_str::<MutationPlan>(json).expect_err("unknown field");
+        assert!(error.to_string().contains("unknown field"));
     }
 }
