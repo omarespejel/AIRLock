@@ -10,12 +10,13 @@ while read -r local_ref local_oid remote_ref remote_oid; do
     continue
   fi
   PUSHED_REFS=$((PUSHED_REFS + 1))
-  if [[ "$local_oid" != "$HEAD_COMMIT" ]]; then
+  local_commit="$(git rev-parse "${local_oid}^{commit}" 2>/dev/null || true)"
+  if [[ "$local_commit" != "$HEAD_COMMIT" ]]; then
     printf 'AIRLock pre-push blocks %s (%s): check out that commit and validate it directly\n' \
       "$local_ref" "$local_oid" >&2
     exit 1
   fi
-  printf 'AIRLock pre-push: %s -> %s at %s\n' "$local_ref" "$remote_ref" "$local_oid"
+  printf 'AIRLock pre-push: %s -> %s at %s\n' "$local_ref" "$remote_ref" "$local_commit"
   : "$remote_oid"
 done
 
