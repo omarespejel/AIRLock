@@ -101,6 +101,13 @@ impl AuditEvaluator {
             .0
             - z
     }
+
+    fn push_relation_fraction(&mut self, fraction: Fraction<ExtExpr, ExtExpr>) {
+        if self.logup.fracs.is_empty() {
+            self.logup.is_finalized = false;
+        }
+        self.logup.fracs.push(fraction);
+    }
 }
 
 impl EvalAtRow for AuditEvaluator {
@@ -145,6 +152,7 @@ impl EvalAtRow for AuditEvaluator {
                 "add_to_relation(`{}`) after LogUp was finalized",
                 entry.relation().get_name()
             ));
+            return;
         }
         self.relations.push(RawRelationEntry {
             relation_name: entry.relation().get_name().to_string(),
@@ -155,7 +163,7 @@ impl EvalAtRow for AuditEvaluator {
 
         let combined = self.combine_formal(entry.relation(), entry.values());
         let frac = Fraction::new(entry.multiplicity().clone(), combined);
-        self.write_logup_frac(frac);
+        self.push_relation_fraction(frac);
     }
 
     fn get_preprocessed_column(&mut self, column: PreProcessedColumnId) -> Self::F {
@@ -168,11 +176,16 @@ impl EvalAtRow for AuditEvaluator {
         mask_item
     }
 
-    fn write_logup_frac(&mut self, fraction: Fraction<Self::EF, Self::EF>) {
-        if self.logup.fracs.is_empty() {
-            self.logup.is_finalized = false;
+    fn write_logup_frac(&mut self, _fraction: Fraction<Self::EF, Self::EF>) {
+        if self.logup_finalized {
+            self.structural_errors
+                .push("write_logup_frac called after LogUp was finalized".into());
+            return;
         }
-        self.logup.fracs.push(fraction);
+        self.structural_errors.push(
+            "direct write_logup_frac is unsupported because it bypasses uncompressed relation capture; use add_to_relation"
+                .into(),
+        );
     }
 
     fn finalize_logup_batched(&mut self, batch_size: usize) {

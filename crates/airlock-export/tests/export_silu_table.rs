@@ -12,6 +12,8 @@ use airlock_ir::{
     RowSupport, SemanticContract, SemanticType,
 };
 use airlock_lint::{LintOptions, lint_manifest};
+use num_traits::One;
+use stwo::core::Fraction;
 use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
 use stwo_constraint_framework::{EvalAtRow, FrameworkEval, RelationEntry, relation};
 
@@ -29,6 +31,10 @@ struct OversizedAir;
 struct EmptyFinalizeAir {
     calls: usize,
 }
+
+struct LateDirectLogupWriteAir;
+
+struct DirectRawLogupWriteAir;
 
 struct PanickingLogSizeAir;
 
@@ -113,6 +119,43 @@ impl FrameworkEval for EmptyFinalizeAir {
         for _ in 0..self.calls {
             eval.finalize_logup();
         }
+        eval
+    }
+}
+
+impl FrameworkEval for LateDirectLogupWriteAir {
+    fn log_size(&self) -> u32 {
+        4
+    }
+
+    fn max_constraint_log_degree_bound(&self) -> u32 {
+        5
+    }
+
+    fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
+        let value = eval.next_trace_mask();
+        eval.add_to_relation(RelationEntry::new(
+            &SiLU::dummy(),
+            E::EF::one(),
+            &[value.clone(), value],
+        ));
+        eval.finalize_logup();
+        eval.write_logup_frac(Fraction::new(E::EF::one(), E::EF::one()));
+        eval
+    }
+}
+
+impl FrameworkEval for DirectRawLogupWriteAir {
+    fn log_size(&self) -> u32 {
+        4
+    }
+
+    fn max_constraint_log_degree_bound(&self) -> u32 {
+        5
+    }
+
+    fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
+        eval.write_logup_frac(Fraction::new(E::EF::one(), E::EF::one()));
         eval
     }
 }
@@ -430,6 +473,23 @@ fn empty_logup_finalization_fails_without_panicking() {
             .expect_err("empty LogUp finalization must fail closed");
         assert!(err.to_string().contains("already finalized"), "{err}");
     }
+}
+
+#[test]
+fn direct_logup_write_after_finalization_fails_closed() {
+    let err = export_component(&LateDirectLogupWriteAir, ExportAnnotations::default())
+        .expect_err("a direct late LogUp write must fail closed");
+    assert!(err.to_string().contains("write_logup_frac"), "{err}");
+}
+
+#[test]
+fn direct_raw_logup_fraction_fails_closed() {
+    let err = export_component(&DirectRawLogupWriteAir, ExportAnnotations::default())
+        .expect_err("a raw LogUp fraction cannot bypass relation capture");
+    assert!(
+        err.to_string().contains("uncompressed relation capture"),
+        "{err}"
+    );
 }
 
 #[test]
