@@ -1,5 +1,6 @@
 //! End-to-end: Stwo FrameworkEval → AuditEvaluator → AuditIR → static lints.
 
+use std::cell::Cell;
 use std::collections::BTreeSet;
 
 use airlock_export::{
@@ -27,6 +28,15 @@ struct OversizedAir;
 
 struct EmptyFinalizeAir {
     calls: usize,
+}
+
+struct PanickingLogSizeAir;
+
+struct PanickingDegreeAir;
+
+struct CountedMetadataAir {
+    log_size_calls: Cell<usize>,
+    degree_calls: Cell<usize>,
 }
 
 impl FrameworkEval for SiluTableAir {
@@ -103,6 +113,50 @@ impl FrameworkEval for EmptyFinalizeAir {
         for _ in 0..self.calls {
             eval.finalize_logup();
         }
+        eval
+    }
+}
+
+impl FrameworkEval for PanickingLogSizeAir {
+    fn log_size(&self) -> u32 {
+        panic!("log-size panic")
+    }
+
+    fn max_constraint_log_degree_bound(&self) -> u32 {
+        5
+    }
+
+    fn evaluate<E: EvalAtRow>(&self, eval: E) -> E {
+        eval
+    }
+}
+
+impl FrameworkEval for PanickingDegreeAir {
+    fn log_size(&self) -> u32 {
+        4
+    }
+
+    fn max_constraint_log_degree_bound(&self) -> u32 {
+        panic!("degree-bound panic")
+    }
+
+    fn evaluate<E: EvalAtRow>(&self, eval: E) -> E {
+        eval
+    }
+}
+
+impl FrameworkEval for CountedMetadataAir {
+    fn log_size(&self) -> u32 {
+        self.log_size_calls.set(self.log_size_calls.get() + 1);
+        4
+    }
+
+    fn max_constraint_log_degree_bound(&self) -> u32 {
+        self.degree_calls.set(self.degree_calls.get() + 1);
+        5
+    }
+
+    fn evaluate<E: EvalAtRow>(&self, eval: E) -> E {
         eval
     }
 }
@@ -376,6 +430,34 @@ fn empty_logup_finalization_fails_without_panicking() {
             .expect_err("empty LogUp finalization must fail closed");
         assert!(err.to_string().contains("already finalized"), "{err}");
     }
+}
+
+#[test]
+fn framework_metadata_panics_become_faithfulness_errors() {
+    let log_size = export_component(&PanickingLogSizeAir, ExportAnnotations::default())
+        .expect_err("log-size panic must not escape exporter");
+    assert!(
+        log_size.to_string().contains("log-size panic"),
+        "{log_size}"
+    );
+
+    let degree = export_component(&PanickingDegreeAir, ExportAnnotations::default())
+        .expect_err("degree-bound panic must not escape exporter");
+    assert!(
+        degree.to_string().contains("degree-bound panic"),
+        "{degree}"
+    );
+}
+
+#[test]
+fn framework_metadata_is_read_exactly_once() {
+    let air = CountedMetadataAir {
+        log_size_calls: Cell::new(0),
+        degree_calls: Cell::new(0),
+    };
+    export_component(&air, ExportAnnotations::default()).expect("export");
+    assert_eq!(air.log_size_calls.get(), 1);
+    assert_eq!(air.degree_calls.get(), 1);
 }
 
 #[test]

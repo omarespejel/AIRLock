@@ -45,8 +45,17 @@ pub fn export_component<E: FrameworkEval>(
     eval: &E,
     annotations: ExportAnnotations,
 ) -> Result<AuditManifest, ExportError> {
+    let (log_size, max_constraint_log_degree_bound) = catch_unwind(AssertUnwindSafe(|| {
+        (eval.log_size(), eval.max_constraint_log_degree_bound())
+    }))
+    .map_err(|payload| {
+        ExportError::Faithfulness(format!(
+            "FrameworkEval metadata panicked: {}",
+            panic_message(payload.as_ref())
+        ))
+    })?;
     let auditor = catch_unwind(AssertUnwindSafe(|| {
-        eval.evaluate(AuditEvaluator::new(eval.log_size()))
+        eval.evaluate(AuditEvaluator::new(log_size))
     }))
     .map_err(|payload| {
         ExportError::Faithfulness(format!(
@@ -97,7 +106,12 @@ pub fn export_component<E: FrameworkEval>(
         ));
     }
 
-    let component = build_component(&auditor, eval, annotations)?;
+    let component = build_component(
+        &auditor,
+        log_size,
+        max_constraint_log_degree_bound,
+        annotations,
+    )?;
     Ok(AuditManifest::new(AIRLOCK_EXPORT_VERSION, vec![component]))
 }
 
@@ -109,12 +123,12 @@ fn panic_message(payload: &(dyn Any + Send)) -> &str {
         .unwrap_or("non-string panic payload")
 }
 
-fn build_component<E: FrameworkEval>(
+fn build_component(
     auditor: &AuditEvaluator,
-    eval: &E,
+    log_size: u32,
+    max_constraint_log_degree_bound: u32,
     annotations: ExportAnnotations,
 ) -> Result<ComponentManifest, ExportError> {
-    let log_size = eval.log_size();
     if log_size > MAX_CIRCLE_DOMAIN_LOG_SIZE {
         return Err(ExportError::Faithfulness(format!(
             "log_size {log_size} exceeds Stwo's maximum Circle domain log size {MAX_CIRCLE_DOMAIN_LOG_SIZE}"
@@ -244,7 +258,7 @@ fn build_component<E: FrameworkEval>(
         constraints,
         relations,
         preprocessed,
-        declared_max_constraint_log_degree_bound: Some(eval.max_constraint_log_degree_bound()),
+        declared_max_constraint_log_degree_bound: Some(max_constraint_log_degree_bound),
         contract: annotations.contract,
         logup_finalized: auditor.logup_finalized,
     })
