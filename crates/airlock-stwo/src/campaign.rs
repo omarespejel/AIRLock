@@ -12,11 +12,12 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+use crate::replay_bundle::{inspect_replay_bundle_inventory, verified_replay_bundle_from_bytes};
 use crate::{
     DifferentialVerdict, IsolatedReplayError, ReplayBundleError, ReplayRequest, STWO_SOURCE_ID,
     StwoBoundaryAdapter, StwoBoundaryError, StwoWitnessAdapter, StwoWitnessError,
-    StwoWitnessReplay, generate_regression_source, read_verified_replay_bundle,
-    run_isolated_replay,
+    StwoWitnessReplay, VerifiedReplayBundle, generate_regression_source,
+    read_verified_replay_bundle, run_isolated_replay,
 };
 
 /// Stable schema identifier for a sealed campaign.
@@ -41,6 +42,7 @@ const MAX_SUMMARY_BYTES: u64 = 64 << 10;
 const MAX_COVERAGE_BYTES: u64 = 1 << 20;
 const MAX_REGRESSION_BYTES: u64 = 1 << 20;
 const MAX_CHECKSUM_BYTES: u64 = 16 << 10;
+const CANONICAL_COVERAGE: &[u8] = include_bytes!("../../../docs/coverage.yaml");
 
 const NON_CLAIMS: [&str; 5] = [
     "Statement binding is unsupported.",
@@ -171,6 +173,20 @@ pub struct VerifiedCampaign {
     pub checksums_sha256: String,
 }
 
+struct CampaignCases {
+    honest: VerifiedReplayBundle,
+    mutated: VerifiedReplayBundle,
+    witness_honest: StwoWitnessReplay,
+    witness_preserving: StwoWitnessReplay,
+    witness_violating: StwoWitnessReplay,
+}
+
+struct CampaignSnapshot {
+    verified: VerifiedCampaign,
+    cases: CampaignCases,
+    regression: Vec<u8>,
+}
+
 /// Write one complete witness replay without overwriting an existing file.
 pub fn write_witness_replay(
     output: &Path,
@@ -200,9 +216,10 @@ pub fn seal_campaign(
 ) -> Result<VerifiedCampaign, CampaignError> {
     validate_commit(airlock_commit)?;
     inspect_unsealed_root(root)?;
-    validate_boundary_and_witness_artifacts(root)?;
+    let cases = cases_from_paths(root)?;
+    validate_cases(&cases)?;
     validate_regression(root)?;
-    let replay_worker_sha256 = recorded_worker_sha256(root)?;
+    let replay_worker_sha256 = recorded_worker_sha256(&cases)?;
 
     let coverage = read_bounded(coverage_source, "coverage source", MAX_COVERAGE_BYTES)?;
     validate_coverage(&coverage)?;
@@ -252,7 +269,7 @@ pub fn seal_campaign(
         write_new_file(&outputs[3], &checksum_bytes)?;
         created.push(outputs[3].clone());
 
-        read_campaign(root, airlock_commit)
+        read_campaign_snapshot(root, airlock_commit).map(|snapshot| snapshot.verified)
     })();
     if result.is_err() {
         for path in created.iter().rev() {
@@ -268,18 +285,20 @@ pub fn verify_campaign(
     expected_airlock_commit: &str,
     worker: &Path,
 ) -> Result<VerifiedCampaign, CampaignError> {
-    let verified = read_campaign(root, expected_airlock_commit)?;
-    fresh_boundary_replay(root, worker)?;
-    fresh_witness_replay(root)?;
-    validate_regression(root)?;
-    Ok(verified)
+    let snapshot = read_campaign_snapshot(root, expected_airlock_commit)?;
+    fresh_boundary_replay(&snapshot.cases, worker)?;
+    fresh_witness_replay(&snapshot.cases)?;
+    validate_regression_bytes(&snapshot.cases.mutated, &snapshot.regression)?;
+    Ok(snapshot.verified)
 }
 
-fn read_campaign(
+fn read_campaign_snapshot(
     root: &Path,
     expected_airlock_commit: &str,
-) -> Result<VerifiedCampaign, CampaignError> {
+) -> Result<CampaignSnapshot, CampaignError> {
     inspect_sealed_root(root)?;
+    inspect_replay_bundle_inventory(&root.join(HONEST_BUNDLE))?;
+    inspect_replay_bundle_inventory(&root.join(MUTATED_BUNDLE))?;
     let checksum_bytes =
         read_bounded(&root.join(CHECKSUM_FILE), CHECKSUM_FILE, MAX_CHECKSUM_BYTES)?;
     let checksums = parse_checksum_document(&checksum_bytes)?;
@@ -296,6 +315,7 @@ fn read_campaign(
     {
         return Err(CampaignError::WrongChecksumInventory);
     }
+    let mut checked_bytes = BTreeMap::new();
     for (path, expected_digest) in &checksums {
         let bytes = read_bounded(
             &root.join(path),
@@ -305,38 +325,91 @@ fn read_campaign(
         if sha256_bytes(&bytes) != *expected_digest {
             return Err(CampaignError::ChecksumMismatch(path.clone()));
         }
+        checked_bytes.insert(path.clone(), bytes);
     }
 
-    let manifest_bytes =
-        read_bounded(&root.join(MANIFEST_FILE), MANIFEST_FILE, MAX_MANIFEST_BYTES)?;
-    let manifest: CampaignManifest = serde_json::from_slice(&manifest_bytes)
+    let manifest_bytes = checked_file(&checked_bytes, MANIFEST_FILE)?;
+    let manifest: CampaignManifest = serde_json::from_slice(manifest_bytes)
         .map_err(|error| CampaignError::MalformedArtifact(error.to_string()))?;
     manifest.validate(expected_airlock_commit)?;
-    if manifest.replay_worker_sha256 != recorded_worker_sha256(root)? {
+    let cases = cases_from_snapshot(&checked_bytes)?;
+    validate_cases(&cases)?;
+    if manifest.replay_worker_sha256 != recorded_worker_sha256(&cases)? {
         return Err(CampaignError::WorkerDigestMismatch);
     }
-    if manifest.payload_files != payload_records(root)? {
+    if manifest.payload_files != payload_records_from_snapshot(&checked_bytes)? {
         return Err(CampaignError::PayloadDigestMismatch);
     }
 
-    let summary = read_bounded(&root.join(SUMMARY_FILE), SUMMARY_FILE, MAX_SUMMARY_BYTES)?;
+    let summary = checked_file(&checked_bytes, SUMMARY_FILE)?;
     if summary
         != summary_document(expected_airlock_commit, &manifest.replay_worker_sha256).as_bytes()
     {
         return Err(CampaignError::SummaryMismatch);
     }
-    let coverage = read_bounded(&root.join(COVERAGE_FILE), COVERAGE_FILE, MAX_COVERAGE_BYTES)?;
-    validate_coverage(&coverage)?;
-    validate_boundary_and_witness_artifacts(root)?;
+    let coverage = checked_file(&checked_bytes, COVERAGE_FILE)?;
+    validate_coverage(coverage)?;
+    let regression = checked_file(&checked_bytes, REGRESSION_FILE)?.to_vec();
+    validate_regression_bytes(&cases.mutated, &regression)?;
 
-    Ok(VerifiedCampaign {
-        manifest,
-        manifest_sha256: sha256_bytes(&manifest_bytes),
-        checksums_sha256: sha256_bytes(&checksum_bytes),
+    Ok(CampaignSnapshot {
+        verified: VerifiedCampaign {
+            manifest,
+            manifest_sha256: sha256_bytes(manifest_bytes),
+            checksums_sha256: sha256_bytes(&checksum_bytes),
+        },
+        cases,
+        regression,
     })
 }
 
-fn validate_boundary_and_witness_artifacts(root: &Path) -> Result<(), CampaignError> {
+fn cases_from_paths(root: &Path) -> Result<CampaignCases, CampaignError> {
+    Ok(CampaignCases {
+        honest: read_verified_replay_bundle(&root.join(HONEST_BUNDLE))?,
+        mutated: read_verified_replay_bundle(&root.join(MUTATED_BUNDLE))?,
+        witness_honest: read_verified_witness_replay(&root.join(WITNESS_HONEST_FILE))?,
+        witness_preserving: read_verified_witness_replay(&root.join(WITNESS_PRESERVING_FILE))?,
+        witness_violating: read_verified_witness_replay(&root.join(WITNESS_VIOLATING_FILE))?,
+    })
+}
+
+fn cases_from_snapshot(
+    checked_bytes: &BTreeMap<String, Vec<u8>>,
+) -> Result<CampaignCases, CampaignError> {
+    Ok(CampaignCases {
+        honest: verified_replay_bundle_from_bytes(
+            checked_file(checked_bytes, "honest/request.json")?,
+            checked_file(checked_bytes, "honest/report.json")?,
+            checked_file(checked_bytes, "honest/SHA256SUMS")?,
+        )?,
+        mutated: verified_replay_bundle_from_bytes(
+            checked_file(checked_bytes, "corrupt-oods-sample/request.json")?,
+            checked_file(checked_bytes, "corrupt-oods-sample/report.json")?,
+            checked_file(checked_bytes, "corrupt-oods-sample/SHA256SUMS")?,
+        )?,
+        witness_honest: witness_replay_from_bytes(checked_file(
+            checked_bytes,
+            WITNESS_HONEST_FILE,
+        )?)?,
+        witness_preserving: witness_replay_from_bytes(checked_file(
+            checked_bytes,
+            WITNESS_PRESERVING_FILE,
+        )?)?,
+        witness_violating: witness_replay_from_bytes(checked_file(
+            checked_bytes,
+            WITNESS_VIOLATING_FILE,
+        )?)?,
+    })
+}
+
+fn witness_replay_from_bytes(bytes: &[u8]) -> Result<StwoWitnessReplay, CampaignError> {
+    let replay: StwoWitnessReplay = serde_json::from_slice(bytes)
+        .map_err(|error| CampaignError::MalformedArtifact(error.to_string()))?;
+    replay.validate()?;
+    Ok(replay)
+}
+
+fn validate_cases(cases: &CampaignCases) -> Result<(), CampaignError> {
     let boundary_adapter = StwoBoundaryAdapter::new()?;
     let expected_honest_request = ReplayRequest::honest();
     let expected_mutated_request = ReplayRequest::mutation(
@@ -347,31 +420,31 @@ fn validate_boundary_and_witness_artifacts(root: &Path) -> Result<(), CampaignEr
         }],
     );
 
-    let honest = read_verified_replay_bundle(&root.join(HONEST_BUNDLE))?;
-    let honest_replay = honest
+    let honest_replay = cases
+        .honest
         .report
         .replay
         .as_ref()
         .ok_or(CampaignError::MissingReplay("honest"))?;
-    if honest.request != expected_honest_request
-        || honest.report.case_id != "honest-baseline"
-        || !honest.report.worker_args.is_empty()
-        || honest.report.timeout_ms != 30_000
+    if cases.honest.request != expected_honest_request
+        || cases.honest.report.case_id != "honest-baseline"
+        || !cases.honest.report.worker_args.is_empty()
+        || cases.honest.report.timeout_ms != 30_000
         || honest_replay.verdict != DifferentialVerdict::HonestAccepted
     {
         return Err(CampaignError::WrongRecordedCase("honest"));
     }
 
-    let mutated = read_verified_replay_bundle(&root.join(MUTATED_BUNDLE))?;
-    let mutated_replay = mutated
+    let mutated_replay = cases
+        .mutated
         .report
         .replay
         .as_ref()
         .ok_or(CampaignError::MissingReplay("corrupt-oods-sample"))?;
-    if mutated.request != expected_mutated_request
-        || mutated.report.case_id != "corrupt-oods-sample"
-        || !mutated.report.worker_args.is_empty()
-        || mutated.report.timeout_ms != 30_000
+    if cases.mutated.request != expected_mutated_request
+        || cases.mutated.report.case_id != "corrupt-oods-sample"
+        || !cases.mutated.report.worker_args.is_empty()
+        || cases.mutated.report.timeout_ms != 30_000
         || mutated_replay.verdict != DifferentialVerdict::MutationRejected
     {
         return Err(CampaignError::WrongRecordedCase("corrupt-oods-sample"));
@@ -403,7 +476,12 @@ fn validate_boundary_and_witness_artifacts(root: &Path) -> Result<(), CampaignEr
             Some(expected_violating),
         ),
     ] {
-        let replay = read_verified_witness_replay(&root.join(path))?;
+        let replay = match path {
+            WITNESS_HONEST_FILE => &cases.witness_honest,
+            WITNESS_PRESERVING_FILE => &cases.witness_preserving,
+            WITNESS_VIOLATING_FILE => &cases.witness_violating,
+            _ => return Err(CampaignError::WrongRecordedCase(path)),
+        };
         let actual_operations = replay
             .observation
             .mutation
@@ -420,9 +498,11 @@ fn validate_boundary_and_witness_artifacts(root: &Path) -> Result<(), CampaignEr
     Ok(())
 }
 
-fn fresh_boundary_replay(root: &Path, worker: &Path) -> Result<(), CampaignError> {
-    for bundle in [HONEST_BUNDLE, MUTATED_BUNDLE] {
-        let recorded = read_verified_replay_bundle(&root.join(bundle))?;
+fn fresh_boundary_replay(cases: &CampaignCases, worker: &Path) -> Result<(), CampaignError> {
+    for (bundle, recorded) in [
+        (HONEST_BUNDLE, &cases.honest),
+        (MUTATED_BUNDLE, &cases.mutated),
+    ] {
         if !recorded.report.is_expected() {
             return Err(CampaignError::WrongRecordedCase(bundle));
         }
@@ -439,27 +519,22 @@ fn fresh_boundary_replay(root: &Path, worker: &Path) -> Result<(), CampaignError
     Ok(())
 }
 
-fn recorded_worker_sha256(root: &Path) -> Result<String, CampaignError> {
-    let honest = read_verified_replay_bundle(&root.join(HONEST_BUNDLE))?
-        .report
-        .worker_sha256;
-    let mutated = read_verified_replay_bundle(&root.join(MUTATED_BUNDLE))?
-        .report
-        .worker_sha256;
+fn recorded_worker_sha256(cases: &CampaignCases) -> Result<String, CampaignError> {
+    let honest = cases.honest.report.worker_sha256.clone();
+    let mutated = cases.mutated.report.worker_sha256.clone();
     if honest != mutated || !is_sha256(&honest) {
         return Err(CampaignError::WorkerDigestMismatch);
     }
     Ok(honest)
 }
 
-fn fresh_witness_replay(root: &Path) -> Result<(), CampaignError> {
+fn fresh_witness_replay(cases: &CampaignCases) -> Result<(), CampaignError> {
     let adapter = StwoWitnessAdapter::new()?;
-    for path in [
-        WITNESS_HONEST_FILE,
-        WITNESS_PRESERVING_FILE,
-        WITNESS_VIOLATING_FILE,
+    for (path, recorded) in [
+        (WITNESS_HONEST_FILE, &cases.witness_honest),
+        (WITNESS_PRESERVING_FILE, &cases.witness_preserving),
+        (WITNESS_VIOLATING_FILE, &cases.witness_violating),
     ] {
-        let recorded = read_verified_witness_replay(&root.join(path))?;
         let fresh = match recorded.observation.case_kind {
             CaseKind::Honest => adapter.replay_honest()?,
             CaseKind::Mutated => {
@@ -474,7 +549,7 @@ fn fresh_witness_replay(root: &Path) -> Result<(), CampaignError> {
                 )?
             }
         };
-        if fresh != recorded {
+        if fresh != *recorded {
             return Err(CampaignError::FreshReplayMismatch(path));
         }
     }
@@ -483,6 +558,18 @@ fn fresh_witness_replay(root: &Path) -> Result<(), CampaignError> {
 
 fn validate_regression(root: &Path) -> Result<(), CampaignError> {
     let bundle = read_verified_replay_bundle(&root.join(MUTATED_BUNDLE))?;
+    let actual = read_bounded(
+        &root.join(REGRESSION_FILE),
+        REGRESSION_FILE,
+        MAX_REGRESSION_BYTES,
+    )?;
+    validate_regression_bytes(&bundle, &actual)
+}
+
+fn validate_regression_bytes(
+    bundle: &VerifiedReplayBundle,
+    actual: &[u8],
+) -> Result<(), CampaignError> {
     let verdict = bundle
         .report
         .replay
@@ -491,11 +578,6 @@ fn validate_regression(root: &Path) -> Result<(), CampaignError> {
         .verdict;
     let expected = generate_regression_source(&bundle.request, verdict)
         .map_err(|error| CampaignError::Regression(error.to_string()))?;
-    let actual = read_bounded(
-        &root.join(REGRESSION_FILE),
-        REGRESSION_FILE,
-        MAX_REGRESSION_BYTES,
-    )?;
     if actual != expected.as_bytes() {
         return Err(CampaignError::RegressionMismatch);
     }
@@ -508,6 +590,9 @@ fn validate_coverage(bytes: &[u8]) -> Result<(), CampaignError> {
     coverage
         .validate()
         .map_err(|error| CampaignError::MalformedCoverage(error.to_string()))?;
+    if bytes != CANONICAL_COVERAGE {
+        return Err(CampaignError::CoverageSnapshotMismatch);
+    }
     for (name, expected) in [
         ("stwo-demo-verifier-boundary", CoverageStatus::Covered),
         ("stwo-demo-replay-artifact", CoverageStatus::Covered),
@@ -627,6 +712,32 @@ fn payload_records(root: &Path) -> Result<Vec<CampaignFile>, CampaignError> {
             })
         })
         .collect()
+}
+
+fn payload_records_from_snapshot(
+    checked_bytes: &BTreeMap<String, Vec<u8>>,
+) -> Result<Vec<CampaignFile>, CampaignError> {
+    PAYLOAD_PATHS
+        .iter()
+        .map(|path| {
+            let bytes = checked_file(checked_bytes, path)?;
+            Ok(CampaignFile {
+                path: (*path).to_owned(),
+                sha256: sha256_bytes(bytes),
+                size_bytes: bytes.len() as u64,
+            })
+        })
+        .collect()
+}
+
+fn checked_file<'a>(
+    checked_bytes: &'a BTreeMap<String, Vec<u8>>,
+    path: &str,
+) -> Result<&'a [u8], CampaignError> {
+    checked_bytes
+        .get(path)
+        .map(Vec::as_slice)
+        .ok_or(CampaignError::IncompleteInventory)
 }
 
 fn complete_checksums(root: &Path) -> Result<BTreeMap<String, String>, CampaignError> {
@@ -963,6 +1074,9 @@ pub enum CampaignError {
     /// Coverage snapshot cannot be trusted.
     #[error("malformed campaign coverage snapshot: {0}")]
     MalformedCoverage(String),
+    /// Coverage bytes differ from the complete reviewed repository inventory.
+    #[error("campaign coverage snapshot differs from the canonical checked-in inventory")]
+    CoverageSnapshotMismatch,
     /// A required surface has the wrong coverage status.
     #[error("coverage surface `{name}` has status {actual:?}; expected {expected:?}")]
     WrongCoverageStatus {

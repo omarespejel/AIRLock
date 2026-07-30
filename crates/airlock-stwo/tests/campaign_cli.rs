@@ -339,3 +339,30 @@ fn campaign_rejects_a_self_consistently_rehashed_alternate_mutation_plan() {
 
     fs::remove_dir_all(parent).expect("remove campaign test directory");
 }
+
+#[test]
+fn campaign_rejects_a_self_consistently_rehashed_coverage_overclaim() {
+    let parent = temp_parent("coverage-overclaim");
+    let root = build_sealed_campaign(&parent);
+    let coverage_path = root.join("coverage.yaml");
+    let original = fs::read_to_string(&coverage_path).expect("read coverage snapshot");
+    let overclaim = original.replacen(
+        "  - name: warp-streaming\n    status: UNSUPPORTED",
+        "  - name: warp-streaming\n    status: COVERED",
+        1,
+    );
+    assert_ne!(overclaim, original);
+    fs::write(&coverage_path, overclaim).expect("write overclaimed coverage snapshot");
+
+    let mut manifest: CampaignManifest =
+        serde_json::from_slice(&fs::read(root.join("campaign.json")).expect("read manifest"))
+            .expect("parse manifest");
+    refresh_payload_record(&root, &mut manifest, "coverage.yaml");
+    write_manifest(&root, &manifest);
+
+    let output = verify(&root);
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("differs from the canonical checked-in inventory"));
+
+    fs::remove_dir_all(parent).expect("remove campaign test directory");
+}
