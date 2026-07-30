@@ -59,7 +59,7 @@ printf 'AIRLock local gate\n'
 printf '  commit: %s\n' "$CURRENT_COMMIT"
 printf '  toolchain: %s\n' "$TOOLCHAIN"
 
-scripts/verify-stwo-checkout.sh
+AIRLOCK_STWO_DIR="$ROOT/../stwo" scripts/verify-stwo-checkout.sh
 cargo +"$TOOLCHAIN" fmt --all -- --check
 cargo +"$TOOLCHAIN" clippy --workspace --all-targets --locked -- -D warnings
 cargo +"$TOOLCHAIN" test --workspace --all-targets --locked
@@ -96,19 +96,21 @@ run_expected_failure \
 DEMO_OUTPUT="$TMP_DIR/stwo-demo"
 DEMO_LOG="$TMP_DIR/stwo-demo.log"
 scripts/demo-airlock.sh "$DEMO_OUTPUT" >"$DEMO_LOG"
-for stage in \
-  preflight \
-  source-pin \
-  build \
-  verifier-boundary \
-  transition-witness \
-  held-out-witness \
-  generated-regression \
-  campaign-seal \
-  fresh-verification; do
-  grep -Fq "AIRLOCK_DEMO_STAGE stage=$stage status=PASS" "$DEMO_LOG"
-done
-grep -Fq 'AIRLOCK_DEMO_COMPLETE' "$DEMO_LOG"
+EXPECTED_STAGE_SEQUENCE="preflight source-pin build verifier-boundary transition-witness held-out-witness generated-regression campaign-seal fresh-verification"
+ACTUAL_STAGE_SEQUENCE="$(
+  sed -n 's/^AIRLOCK_DEMO_STAGE stage=\([^ ]*\) status=PASS$/\1/p' "$DEMO_LOG" |
+    paste -sd ' ' -
+)"
+if [[ "$ACTUAL_STAGE_SEQUENCE" != "$EXPECTED_STAGE_SEQUENCE" ]]; then
+  printf 'FAIL: demo stage sequence mismatch\nexpected: %s\nactual:   %s\n' \
+    "$EXPECTED_STAGE_SEQUENCE" "$ACTUAL_STAGE_SEQUENCE" >&2
+  exit 1
+fi
+if [[ "$(grep -Fxc 'AIRLOCK_DEMO_COMPLETE' "$DEMO_LOG")" != "1" ]] ||
+  [[ "$(tail -n 1 "$DEMO_LOG")" != "AIRLOCK_DEMO_COMPLETE" ]]; then
+  printf 'FAIL: demo completion marker is missing, repeated, or not final\n' >&2
+  exit 1
+fi
 test -s "$DEMO_OUTPUT/corrupt-oods-sample-regression.rs"
 printf 'PASS: Stwo honest, mutation, replay-bundle, and generated-regression demo\n'
 

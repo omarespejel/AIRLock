@@ -1,7 +1,7 @@
 # AIRLock live demo
 
 This demo shows AIRLock executing adversarial checks at two Stwo boundaries:
-proof-sample validation and pre-commitment witness consistency. It produces a
+proof-sample handling and pre-commitment witness consistency. It produces a
 portable evidence directory and freshly replays every recorded case before
 reporting success.
 
@@ -102,9 +102,9 @@ digests. `coverage.yaml` keeps unsupported and quarantined lanes visible beside
 covered lanes.
 
 Fresh verification requires every checked payload to be bounded UTF-8 text and
-rejects local absolute paths, credential markers, AI attribution, planning
-terms, and development-history narrative. Error messages name only the
-artifact and content class, never the matched text.
+rejects the listed host-path, credential, AI-attribution, planning, and
+development-history markers. Error messages name only the artifact and content
+class, never the matched text.
 
 ## Verify again
 

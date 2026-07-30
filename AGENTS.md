@@ -34,8 +34,8 @@ claim.
 - `crates/airlock-stwo`: pinned executable integration adapter, OODS-sample
   mutations, raw-PCS/framework differential replay, subprocess containment,
   deterministic replay-bundle verification, one phase-bound demo witness
-  campaign, and one precommitted upstream held-out component. Replay bundles
-  remain part of this integration adapter; they do not mark
+  campaign, and one independently selected upstream held-out component. Replay
+  bundles remain part of this integration adapter; they do not mark
   evidence/provenance covered.
   Cross-lane comparison here does not merge AuditIR, verifier-boundary,
   transcript, or evidence verdicts into one assurance result.

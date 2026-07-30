@@ -37,7 +37,7 @@ fi
 stage preflight PASS
 
 stage source-pin BEGIN
-scripts/verify-stwo-checkout.sh
+AIRLOCK_STWO_DIR="$ROOT/../stwo" scripts/verify-stwo-checkout.sh
 stage source-pin PASS
 
 stage build BEGIN

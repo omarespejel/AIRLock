@@ -283,11 +283,14 @@ fn campaign_rejects_self_consistently_rehashed_forbidden_external_content() {
 
     let output = verify(&root);
     assert!(!output.status.success());
+    let error = stderr(&output);
     assert!(
-        stderr(&output).contains("contains forbidden local absolute path"),
+        error.contains("contains forbidden local absolute path"),
         "{}",
-        stderr(&output)
+        error
     );
+    assert!(!error.contains("Claude"), "{error}");
+    assert!(!error.contains("/Users/example"), "{error}");
 
     fs::remove_dir_all(parent).expect("remove campaign test directory");
 }
