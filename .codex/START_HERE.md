@@ -30,6 +30,10 @@ The demo also persists complete typed witness replays and seals the fixed case
 inventory into a deterministic source-bound campaign manifest. Campaign
 verification checks strict inventory, nested and top-level digests, exact
 verdicts, the coverage snapshot, generated regression, and fresh execution.
+The fixed inventory includes one target selected before its adapter existed:
+upstream `WideFibonacciEval<3>` at log size 4, with honest,
+relation-preserving, and relation-violating witness cases. It does not broaden
+coverage to other Stwo examples.
 The exporter numbers columns per interaction tree, validates its mask schedule
 against `InfoEvaluator`, and has a concrete differential fixture against
 Stwo's `AssertEvaluator` and relation tracker.

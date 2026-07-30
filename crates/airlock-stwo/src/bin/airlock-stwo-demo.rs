@@ -5,11 +5,11 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use airlock_boundary::{MutationOperation, ScalarMutation};
+use airlock_boundary::{MutationOperation, ScalarMutation, WitnessVerdict};
 use airlock_stwo::{
-    ReplayRequest, StwoBoundaryAdapter, StwoWitnessAdapter, generate_regression_source,
-    read_verified_replay_bundle, run_isolated_replay, seal_campaign, verify_campaign,
-    write_replay_bundle, write_witness_replay,
+    HeldOutAdapter, ReplayRequest, StwoBoundaryAdapter, StwoWitnessAdapter,
+    generate_regression_source, read_verified_replay_bundle, run_isolated_replay, seal_campaign,
+    verify_campaign, write_held_out_replay, write_replay_bundle, write_witness_replay,
 };
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
@@ -56,6 +56,12 @@ enum Command {
     WitnessPreserving(WitnessArgs),
     /// Mutate one original-trace row and require relation rejection.
     WitnessViolating(WitnessArgs),
+    /// Prove and verify the unmodified upstream held-out witness.
+    HeldOutHonest(WitnessArgs),
+    /// Mutate the upstream held-out witness while preserving its relation.
+    HeldOutPreserving(WitnessArgs),
+    /// Mutate the upstream held-out witness and require relation rejection.
+    HeldOutViolating(WitnessArgs),
     /// Seal the fixed campaign inventory with a source-bound manifest.
     SealCampaign {
         /// Existing campaign root containing only the executed payload files.
@@ -142,6 +148,9 @@ fn main() -> Result<()> {
         Command::WitnessHonest(args) => run_witness_case(WitnessDemoCase::Honest, args),
         Command::WitnessPreserving(args) => run_witness_case(WitnessDemoCase::Preserving, args),
         Command::WitnessViolating(args) => run_witness_case(WitnessDemoCase::Violating, args),
+        Command::HeldOutHonest(args) => run_held_out_case(HeldOutDemoCase::Honest, args),
+        Command::HeldOutPreserving(args) => run_held_out_case(HeldOutDemoCase::Preserving, args),
+        Command::HeldOutViolating(args) => run_held_out_case(HeldOutDemoCase::Violating, args),
         Command::SealCampaign {
             root,
             airlock_commit,
@@ -189,8 +198,36 @@ enum WitnessDemoCase {
     Violating,
 }
 
+impl WitnessDemoCase {
+    const fn expected_verdict(self) -> WitnessVerdict {
+        match self {
+            Self::Honest => WitnessVerdict::HonestAccepted,
+            Self::Preserving => WitnessVerdict::ConstraintPreservingAccepted,
+            Self::Violating => WitnessVerdict::ConstraintViolationRejected,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum HeldOutDemoCase {
+    Honest,
+    Preserving,
+    Violating,
+}
+
+impl HeldOutDemoCase {
+    const fn expected_verdict(self) -> WitnessVerdict {
+        match self {
+            Self::Honest => WitnessVerdict::HonestAccepted,
+            Self::Preserving => WitnessVerdict::ConstraintPreservingAccepted,
+            Self::Violating => WitnessVerdict::ConstraintViolationRejected,
+        }
+    }
+}
+
 fn run_witness_case(case: WitnessDemoCase, args: WitnessArgs) -> Result<()> {
     let adapter = StwoWitnessAdapter::new().context("build pinned witness adapter")?;
+    let expected_verdict = case.expected_verdict();
     let replay = match case {
         WitnessDemoCase::Honest => adapter.replay_honest(),
         WitnessDemoCase::Preserving => adapter.replay_mutation(
@@ -203,10 +240,10 @@ fn run_witness_case(case: WitnessDemoCase, args: WitnessArgs) -> Result<()> {
         ),
     }
     .context("run phase-bound witness replay")?;
-    if !replay.report.verdict.is_expected() {
+    if replay.report.verdict != expected_verdict {
         bail!(
-            "witness replay is internally consistent but produced unexpected verdict {:?}",
-            replay.report.verdict
+            "witness replay produced verdict {:?}; requested case requires {expected_verdict:?}",
+            replay.report.verdict,
         );
     }
     let artifact_sha256 = args
@@ -222,6 +259,48 @@ fn run_witness_case(case: WitnessDemoCase, args: WitnessArgs) -> Result<()> {
             "status": "AIRLOCK_WITNESS_REPLAY_EXPECTED",
             "case_id": replay.report.case_id,
             "verdict": replay.report.verdict,
+            "audit_ir_sha256": replay.observation.audit_ir_sha256,
+            "seed_witness_sha256": mutation.map(|plan| &plan.seed_witness_sha256),
+            "mutated_witness_sha256": mutation.map(|plan| &plan.mutated_witness_sha256),
+            "audit_ir_constraints_hold": replay.observation.audit_ir_constraints_hold,
+            "proof_generation": replay.observation.proof_generation,
+            "verifier": replay.observation.verifier,
+            "artifact_sha256": artifact_sha256,
+        })
+    );
+    Ok(())
+}
+
+fn run_held_out_case(case: HeldOutDemoCase, args: WitnessArgs) -> Result<()> {
+    let adapter = HeldOutAdapter::new().context("build upstream held-out adapter")?;
+    let expected_verdict = case.expected_verdict();
+    let replay = match case {
+        HeldOutDemoCase::Honest => adapter.replay_honest(),
+        HeldOutDemoCase::Preserving => adapter.replay_preserving(),
+        HeldOutDemoCase::Violating => adapter.replay_violating(),
+    }
+    .context("run held-out witness replay")?;
+    if replay.report.verdict != expected_verdict {
+        bail!(
+            "held-out replay produced verdict {:?}; requested case requires {expected_verdict:?}",
+            replay.report.verdict,
+        );
+    }
+    let artifact_sha256 = args
+        .output
+        .as_ref()
+        .map(|output| write_held_out_replay(output, &replay))
+        .transpose()
+        .context("write complete held-out replay")?;
+    let mutation = replay.observation.mutation.as_ref();
+    println!(
+        "{}",
+        json!({
+            "status": "AIRLOCK_HELD_OUT_REPLAY_EXPECTED",
+            "target": replay.contract.target,
+            "case_id": replay.report.case_id,
+            "verdict": replay.report.verdict,
+            "requested_paths": replay.contract.requested.len(),
             "audit_ir_sha256": replay.observation.audit_ir_sha256,
             "seed_witness_sha256": mutation.map(|plan| &plan.seed_witness_sha256),
             "mutated_witness_sha256": mutation.map(|plan| &plan.mutated_witness_sha256),
@@ -324,4 +403,38 @@ fn write_new(path: &Path, bytes: &[u8]) -> Result<()> {
     file.write_all(bytes)
         .and_then(|()| file.sync_all())
         .with_context(|| format!("write {}", path.display()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{HeldOutDemoCase, WitnessDemoCase};
+    use airlock_boundary::WitnessVerdict;
+
+    #[test]
+    fn demo_cases_require_exact_verdicts() {
+        assert_eq!(
+            WitnessDemoCase::Honest.expected_verdict(),
+            WitnessVerdict::HonestAccepted
+        );
+        assert_eq!(
+            WitnessDemoCase::Preserving.expected_verdict(),
+            WitnessVerdict::ConstraintPreservingAccepted
+        );
+        assert_eq!(
+            WitnessDemoCase::Violating.expected_verdict(),
+            WitnessVerdict::ConstraintViolationRejected
+        );
+        assert_eq!(
+            HeldOutDemoCase::Honest.expected_verdict(),
+            WitnessVerdict::HonestAccepted
+        );
+        assert_eq!(
+            HeldOutDemoCase::Preserving.expected_verdict(),
+            WitnessVerdict::ConstraintPreservingAccepted
+        );
+        assert_eq!(
+            HeldOutDemoCase::Violating.expected_verdict(),
+            WitnessVerdict::ConstraintViolationRejected
+        );
+    }
 }

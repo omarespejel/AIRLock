@@ -5,19 +5,25 @@ use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use airlock_boundary::WitnessVerdict;
-use airlock_stwo::{CampaignManifest, StwoWitnessAdapter, write_witness_replay};
+use airlock_stwo::{
+    CampaignManifest, HeldOutAdapter, StwoWitnessAdapter, write_held_out_replay,
+    write_witness_replay,
+};
 use sha2::{Digest, Sha256};
 
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 const TEST_COMMIT: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-const CHECKSUM_PATHS: [&str; 13] = [
+const CHECKSUM_PATHS: [&str; 16] = [
     "campaign.json",
     "corrupt-oods-sample/SHA256SUMS",
     "corrupt-oods-sample/report.json",
     "corrupt-oods-sample/request.json",
     "corrupt-oods-sample-regression.rs",
     "coverage.yaml",
+    "heldout-honest.json",
+    "heldout-preserving.json",
+    "heldout-violating.json",
     "honest/SHA256SUMS",
     "honest/report.json",
     "honest/request.json",
@@ -99,6 +105,13 @@ fn build_sealed_campaign(parent: &Path) -> PathBuf {
         ("witness-honest", root.join("witness-honest.json")),
         ("witness-preserving", root.join("witness-preserving.json")),
         ("witness-violating", root.join("witness-violating.json")),
+    ] {
+        require_success(&[command, "--output", as_str(&output)]);
+    }
+    for (command, output) in [
+        ("held-out-honest", root.join("heldout-honest.json")),
+        ("held-out-preserving", root.join("heldout-preserving.json")),
+        ("held-out-violating", root.join("heldout-violating.json")),
     ] {
         require_success(&[command, "--output", as_str(&output)]);
     }
@@ -298,6 +311,22 @@ fn witness_artifact_writer_never_removes_an_existing_file() {
 }
 
 #[test]
+fn held_out_artifact_writer_never_removes_an_existing_file() {
+    let parent = temp_parent("existing-held-out");
+    let output = parent.join("heldout-honest.json");
+    fs::write(&output, b"keep me\n").expect("write existing held-out artifact");
+
+    let result = run(&["held-out-honest", "--output", as_str(&output)]);
+    assert!(!result.status.success());
+    assert_eq!(
+        fs::read(&output).expect("existing held-out artifact remains"),
+        b"keep me\n"
+    );
+
+    fs::remove_dir_all(parent).expect("remove campaign test directory");
+}
+
+#[test]
 fn campaign_rejects_self_consistent_wrong_source_and_verdict() {
     let parent = temp_parent("semantic");
     let base = build_sealed_campaign(&parent);
@@ -364,6 +393,40 @@ fn campaign_rejects_a_self_consistently_rehashed_alternate_mutation_plan() {
         serde_json::from_slice(&fs::read(root.join("campaign.json")).expect("read manifest"))
             .expect("parse manifest");
     refresh_payload_record(&root, &mut manifest, "witness-preserving.json");
+    write_manifest(&root, &manifest);
+
+    let output = verify(&root);
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("differs from the frozen case contract"));
+
+    fs::remove_dir_all(parent).expect("remove campaign test directory");
+}
+
+#[test]
+fn campaign_rejects_a_rehashed_semantically_equivalent_held_out_plan() {
+    let parent = temp_parent("alternate-held-out-plan");
+    let root = build_sealed_campaign(&parent);
+    let adapter = HeldOutAdapter::new().expect("build held-out adapter");
+    let mut alternate_operations = adapter
+        .preserving_operations_at_row(0)
+        .expect("in-range row");
+    alternate_operations.reverse();
+    let alternate = adapter
+        .replay_mutation("wide-fibonacci-preserving", alternate_operations)
+        .expect("replay alternate preserving mutation");
+    assert_eq!(
+        alternate.report.verdict,
+        WitnessVerdict::ConstraintPreservingAccepted
+    );
+
+    let artifact = root.join("heldout-preserving.json");
+    fs::remove_file(&artifact).expect("remove original held-out artifact");
+    write_held_out_replay(&artifact, &alternate).expect("write alternate held-out artifact");
+
+    let mut manifest: CampaignManifest =
+        serde_json::from_slice(&fs::read(root.join("campaign.json")).expect("read manifest"))
+            .expect("parse manifest");
+    refresh_payload_record(&root, &mut manifest, "heldout-preserving.json");
     write_manifest(&root, &manifest);
 
     let output = verify(&root);

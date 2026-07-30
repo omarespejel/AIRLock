@@ -6,7 +6,15 @@ STWO_DIR="${AIRLOCK_STWO_DIR:-$ROOT/../stwo}"
 PATCH="$ROOT/patches/stwo-relation-entry-accessors.patch"
 REQUIRED_COMMIT="f0d79b0fad440dcb0aaf1e20470fdbb37993ea2a"
 TARGET="crates/constraint-framework/src/lib.rs"
-REQUIRED_PATHS=(Cargo.toml Cargo.lock crates/stwo crates/constraint-framework)
+REQUIRED_PATHS=(
+  Cargo.toml
+  Cargo.lock
+  crates/stwo
+  crates/constraint-framework
+  crates/examples/Cargo.toml
+  crates/examples/src/lib.rs
+  crates/examples/src/wide_fibonacci
+)
 TMP_PATCH="$(mktemp "${TMPDIR:-/tmp}/airlock-stwo-patch.XXXXXX")"
 trap 'rm -f "$TMP_PATCH"' EXIT
 
@@ -49,5 +57,5 @@ if ! cmp -s "$PATCH" "$TMP_PATCH"; then
   fail "Stwo accessor diff does not match $PATCH"
 fi
 
-printf 'PASS: Stwo dependency sources at %s match upstream baseline %s plus the checked accessor patch\n' \
+printf 'PASS: Stwo dependency and held-out target sources at %s match upstream baseline %s plus the checked accessor patch\n' \
   "$actual_commit" "$REQUIRED_COMMIT"

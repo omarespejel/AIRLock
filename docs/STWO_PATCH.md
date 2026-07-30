@@ -39,9 +39,9 @@ sibling branch / upstream Stwo rather than forking AIRLock's view of the AST.
 
 Until that API lands upstream, `scripts/verify-local.sh` fails unless the
 sibling checkout has byte-identical `Cargo.toml`, `Cargo.lock`, `crates/stwo`,
-and `crates/constraint-framework` objects relative to the baseline, plus the
-exact checked patch. This permits descendants that change only unrelated Stwo
-examples while preventing dependency drift. Extra staged, tracked, or untracked
+`crates/constraint-framework`, and held-out `wide_fibonacci` target sources
+relative to the baseline, plus the exact checked patch. Other Stwo examples
+remain outside the held-out target claim. Extra staged, tracked, or untracked
 changes fail the gate.
 
 The commit above is a required source baseline. It is not automatically written

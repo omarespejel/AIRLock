@@ -11,6 +11,7 @@
 mod adapter;
 mod campaign;
 mod fixture;
+mod heldout;
 mod isolation;
 mod mutation;
 mod regression;
@@ -24,10 +25,15 @@ pub use adapter::{
 };
 pub use campaign::{
     CAMPAIGN_SCHEMA_ID, CAMPAIGN_SCHEMA_VERSION, CampaignCase, CampaignError, CampaignFile,
-    CampaignManifest, VerifiedCampaign, read_verified_witness_replay, seal_campaign,
-    verify_campaign, write_witness_replay,
+    CampaignManifest, VerifiedCampaign, read_verified_held_out_replay,
+    read_verified_witness_replay, seal_campaign, verify_campaign, write_held_out_replay,
+    write_witness_replay,
 };
 pub use fixture::{DemoComponent, DemoProof, build_demo_fixture};
+pub use heldout::{
+    HELD_OUT_HONEST_CASE, HELD_OUT_PRESERVING_CASE, HELD_OUT_VIOLATING_CASE, HeldOutAdapter,
+    HeldOutError, HeldOutReplay, STWO_HELD_OUT_TARGET,
+};
 pub use isolation::{
     IsolatedReplayError, IsolatedReplayRecord, ProcessTermination, run_isolated_replay,
     run_isolated_replay_with_worker_digest,

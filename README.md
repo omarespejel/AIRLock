@@ -17,7 +17,7 @@ or that a green AIRLock report establishes whole-system STARK security.
 | AuditIR schema (`airlock-ir`) | landed |
 | Static gate (`airlock-lint`) | schema/shape + parameter/phase closure + preprocessed integrity + Q8 support/functionality + encoder bound + LogUp finalize |
 | Verifier boundary contracts (`airlock-boundary`) | proof-neutral request/supply/consumption and typed transcript oracles |
-| Pinned Stwo adapter (`airlock-stwo`) | real demo proof, verifier-derived OODS requests, sample-only mutations, raw-PCS/framework replay, phase-bound pre-commitment witness injection, subprocess containment, verified replay bundles, generated Rust regression, sealed campaign manifest |
+| Pinned Stwo adapter (`airlock-stwo`) | real demo proof, verifier-derived OODS requests, sample-only mutations, raw-PCS/framework replay, phase-bound pre-commitment witness injection, one precommitted upstream Wide Fibonacci held-out target, subprocess containment, verified replay bundles, generated Rust regression, sealed campaign manifest |
 | CLI (`airlock`) | `air`, `coverage`, `schema` |
 | Stwo `AuditEvaluator` exporter | landed (`airlock-export`); concrete differential checks cover one synthetic cross-interaction AIR |
 | cvc5 / Lean | later PRs |
@@ -40,8 +40,9 @@ cargo +nightly-2026-01-15 test -p airlock-stwo --locked
 cargo +nightly-2026-01-15 test -p airlock-export \
   --test assert_evaluator_faithfulness --locked
 
-# Honest proof, adversarial rejection, full witness records, generated Rust
-# regression, deterministic campaign manifest, and fresh replay verification.
+# Honest proof, adversarial rejection, full witness records for the demo and
+# held-out target, generated Rust regression, deterministic campaign manifest,
+# and fresh replay verification.
 scripts/demo-stwo-boundary.sh /tmp/airlock-stwo-campaign
 
 # Recheck a campaign against its source commit and the pinned worker.
@@ -54,6 +55,10 @@ cargo +nightly-2026-01-15 run -p airlock-stwo --bin airlock-stwo-demo -- \
 # Direct phase-bound witness campaigns are also exposed by the demo binary.
 cargo +nightly-2026-01-15 run -p airlock-stwo --bin airlock-stwo-demo -- \
   witness-preserving
+
+# The precommitted held-out target uses Stwo's real WideFibonacciEval<3>.
+cargo +nightly-2026-01-15 run -p airlock-stwo --bin airlock-stwo-demo -- \
+  held-out-preserving
 
 cargo +nightly-2026-01-15 run -p airlock-cli -- air \
   --manifest fixtures/seeded/q8_padded_table_vulnerable.json
@@ -109,6 +114,13 @@ replay. Solver/Lean tracks remain separate lanes.
   other columns, semantic claims beyond the emitted AIR, and universal
   malicious-witness coverage remain unsupported. The direct witness demo is
   in-process; it is not the isolated replay worker or an OS sandbox.
+- The held-out adapter covers exactly Stwo's upstream `WideFibonacciEval<3>` at
+  log size 4. It derives the three original-column identities and verifier
+  request from the real component, then runs an honest case, a coordinated
+  same-row Increment mutation that preserves `c = a^2 + b^2`, and a
+  third-column-only Increment that violates it at every physical row. It does
+  not cover other `stwo-examples` components, arbitrary scalar operators,
+  application semantics, transcript or FRI soundness, or broad Stwo behavior.
 - A green transcript report establishes only the declared event-order and
   validation prerequisites, exact PoW configuration, and query shape over one
   complete typed trace. It does not establish Fiat--Shamir or FRI security.

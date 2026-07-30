@@ -14,9 +14,10 @@ use thiserror::Error;
 
 use crate::replay_bundle::{inspect_replay_bundle_inventory, verified_replay_bundle_from_bytes};
 use crate::{
-    DifferentialVerdict, IsolatedReplayError, ReplayBundleError, ReplayRequest, STWO_SOURCE_ID,
-    StwoBoundaryAdapter, StwoBoundaryError, StwoWitnessAdapter, StwoWitnessError,
-    StwoWitnessReplay, VerifiedReplayBundle, generate_regression_source,
+    DifferentialVerdict, HELD_OUT_HONEST_CASE, HELD_OUT_PRESERVING_CASE, HELD_OUT_VIOLATING_CASE,
+    HeldOutAdapter, HeldOutError, HeldOutReplay, IsolatedReplayError, ReplayBundleError,
+    ReplayRequest, STWO_SOURCE_ID, StwoBoundaryAdapter, StwoBoundaryError, StwoWitnessAdapter,
+    StwoWitnessError, StwoWitnessReplay, VerifiedReplayBundle, generate_regression_source,
     read_verified_replay_bundle, run_isolated_replay_with_worker_digest,
 };
 
@@ -24,7 +25,7 @@ use crate::{
 pub const CAMPAIGN_SCHEMA_ID: &str = "airlock.stwo-campaign";
 
 /// Serialized campaign-manifest version.
-pub const CAMPAIGN_SCHEMA_VERSION: &str = "0.1.0";
+pub const CAMPAIGN_SCHEMA_VERSION: &str = "0.2.0";
 
 const MANIFEST_FILE: &str = "campaign.json";
 const CHECKSUM_FILE: &str = "SHA256SUMS";
@@ -33,6 +34,9 @@ const COVERAGE_FILE: &str = "coverage.yaml";
 const HONEST_BUNDLE: &str = "honest";
 const MUTATED_BUNDLE: &str = "corrupt-oods-sample";
 const REGRESSION_FILE: &str = "corrupt-oods-sample-regression.rs";
+const HELD_OUT_HONEST_FILE: &str = "heldout-honest.json";
+const HELD_OUT_PRESERVING_FILE: &str = "heldout-preserving.json";
+const HELD_OUT_VIOLATING_FILE: &str = "heldout-violating.json";
 const WITNESS_HONEST_FILE: &str = "witness-honest.json";
 const WITNESS_PRESERVING_FILE: &str = "witness-preserving.json";
 const WITNESS_VIOLATING_FILE: &str = "witness-violating.json";
@@ -52,12 +56,15 @@ const NON_CLAIMS: [&str; 5] = [
     "Observed executions do not establish a cryptographic soundness theorem.",
 ];
 
-const PAYLOAD_PATHS: [&str; 12] = [
+const PAYLOAD_PATHS: [&str; 15] = [
     "corrupt-oods-sample/SHA256SUMS",
     "corrupt-oods-sample/report.json",
     "corrupt-oods-sample/request.json",
     REGRESSION_FILE,
     COVERAGE_FILE,
+    HELD_OUT_HONEST_FILE,
+    HELD_OUT_PRESERVING_FILE,
+    HELD_OUT_VIOLATING_FILE,
     "honest/SHA256SUMS",
     "honest/report.json",
     "honest/request.json",
@@ -176,6 +183,9 @@ pub struct VerifiedCampaign {
 struct CampaignCases {
     honest: VerifiedReplayBundle,
     mutated: VerifiedReplayBundle,
+    held_out_honest: HeldOutReplay,
+    held_out_preserving: HeldOutReplay,
+    held_out_violating: HeldOutReplay,
     witness_honest: StwoWitnessReplay,
     witness_preserving: StwoWitnessReplay,
     witness_violating: StwoWitnessReplay,
@@ -206,6 +216,24 @@ pub fn read_verified_witness_replay(path: &Path) -> Result<StwoWitnessReplay, Ca
         .map_err(|error| CampaignError::MalformedArtifact(error.to_string()))?;
     replay.validate()?;
     Ok(replay)
+}
+
+/// Write one complete held-out replay without overwriting an existing file.
+pub fn write_held_out_replay(
+    output: &Path,
+    replay: &HeldOutReplay,
+) -> Result<String, CampaignError> {
+    replay.validate()?;
+    let bytes = pretty_json(replay)?;
+    enforce_size(output_name(output), bytes.len() as u64, MAX_ARTIFACT_BYTES)?;
+    write_new_file(output, &bytes)?;
+    Ok(sha256_bytes(&bytes))
+}
+
+/// Read and validate one complete held-out replay.
+pub fn read_verified_held_out_replay(path: &Path) -> Result<HeldOutReplay, CampaignError> {
+    let bytes = read_bounded(path, output_name(path), MAX_ARTIFACT_BYTES)?;
+    held_out_replay_from_bytes(&bytes)
 }
 
 /// Seal an already executed fixed campaign with a manifest and checksums.
@@ -292,6 +320,7 @@ pub fn verify_campaign(
         &snapshot.verified.manifest.replay_worker_sha256,
     )?;
     fresh_witness_replay(&snapshot.cases)?;
+    fresh_held_out_replay(&snapshot.cases)?;
     validate_regression_bytes(&snapshot.cases.mutated, &snapshot.regression)?;
     Ok(snapshot.verified)
 }
@@ -371,6 +400,9 @@ fn cases_from_paths(root: &Path) -> Result<CampaignCases, CampaignError> {
     Ok(CampaignCases {
         honest: read_verified_replay_bundle(&root.join(HONEST_BUNDLE))?,
         mutated: read_verified_replay_bundle(&root.join(MUTATED_BUNDLE))?,
+        held_out_honest: read_verified_held_out_replay(&root.join(HELD_OUT_HONEST_FILE))?,
+        held_out_preserving: read_verified_held_out_replay(&root.join(HELD_OUT_PRESERVING_FILE))?,
+        held_out_violating: read_verified_held_out_replay(&root.join(HELD_OUT_VIOLATING_FILE))?,
         witness_honest: read_verified_witness_replay(&root.join(WITNESS_HONEST_FILE))?,
         witness_preserving: read_verified_witness_replay(&root.join(WITNESS_PRESERVING_FILE))?,
         witness_violating: read_verified_witness_replay(&root.join(WITNESS_VIOLATING_FILE))?,
@@ -391,6 +423,18 @@ fn cases_from_snapshot(
             checked_file(checked_bytes, "corrupt-oods-sample/report.json")?,
             checked_file(checked_bytes, "corrupt-oods-sample/SHA256SUMS")?,
         )?,
+        held_out_honest: held_out_replay_from_bytes(checked_file(
+            checked_bytes,
+            HELD_OUT_HONEST_FILE,
+        )?)?,
+        held_out_preserving: held_out_replay_from_bytes(checked_file(
+            checked_bytes,
+            HELD_OUT_PRESERVING_FILE,
+        )?)?,
+        held_out_violating: held_out_replay_from_bytes(checked_file(
+            checked_bytes,
+            HELD_OUT_VIOLATING_FILE,
+        )?)?,
         witness_honest: witness_replay_from_bytes(checked_file(
             checked_bytes,
             WITNESS_HONEST_FILE,
@@ -408,6 +452,13 @@ fn cases_from_snapshot(
 
 fn witness_replay_from_bytes(bytes: &[u8]) -> Result<StwoWitnessReplay, CampaignError> {
     let replay: StwoWitnessReplay = serde_json::from_slice(bytes)
+        .map_err(|error| CampaignError::MalformedArtifact(error.to_string()))?;
+    replay.validate()?;
+    Ok(replay)
+}
+
+fn held_out_replay_from_bytes(bytes: &[u8]) -> Result<HeldOutReplay, CampaignError> {
+    let replay: HeldOutReplay = serde_json::from_slice(bytes)
         .map_err(|error| CampaignError::MalformedArtifact(error.to_string()))?;
     replay.validate()?;
     Ok(replay)
@@ -499,6 +550,50 @@ fn validate_cases(cases: &CampaignCases) -> Result<(), CampaignError> {
             return Err(CampaignError::WrongRecordedCase(path));
         }
     }
+
+    let held_out_adapter = HeldOutAdapter::new()?;
+    let expected_preserving = held_out_adapter.preserving_operations_at_row(0)?;
+    let expected_violating = vec![held_out_adapter.increment_operation(2, 0)?];
+    for (path, replay, case_id, case_kind, verdict, expected_operations) in [
+        (
+            HELD_OUT_HONEST_FILE,
+            &cases.held_out_honest,
+            HELD_OUT_HONEST_CASE,
+            CaseKind::Honest,
+            WitnessVerdict::HonestAccepted,
+            None,
+        ),
+        (
+            HELD_OUT_PRESERVING_FILE,
+            &cases.held_out_preserving,
+            HELD_OUT_PRESERVING_CASE,
+            CaseKind::Mutated,
+            WitnessVerdict::ConstraintPreservingAccepted,
+            Some(expected_preserving),
+        ),
+        (
+            HELD_OUT_VIOLATING_FILE,
+            &cases.held_out_violating,
+            HELD_OUT_VIOLATING_CASE,
+            CaseKind::Mutated,
+            WitnessVerdict::ConstraintViolationRejected,
+            Some(expected_violating),
+        ),
+    ] {
+        let actual_operations = replay
+            .observation
+            .mutation
+            .as_ref()
+            .map(|plan| plan.operations.as_slice());
+        if replay.report.case_id != case_id
+            || replay.report.verdict != verdict
+            || replay.observation.case_kind != case_kind
+            || actual_operations != expected_operations.as_deref()
+            || replay.contract != *held_out_adapter.contract()
+        {
+            return Err(CampaignError::WrongRecordedCase(path));
+        }
+    }
     Ok(())
 }
 
@@ -565,6 +660,34 @@ fn fresh_witness_replay(cases: &CampaignCases) -> Result<(), CampaignError> {
     Ok(())
 }
 
+fn fresh_held_out_replay(cases: &CampaignCases) -> Result<(), CampaignError> {
+    let adapter = HeldOutAdapter::new()?;
+    for (path, recorded) in [
+        (HELD_OUT_HONEST_FILE, &cases.held_out_honest),
+        (HELD_OUT_PRESERVING_FILE, &cases.held_out_preserving),
+        (HELD_OUT_VIOLATING_FILE, &cases.held_out_violating),
+    ] {
+        let fresh = match recorded.observation.case_kind {
+            CaseKind::Honest => adapter.replay_honest()?,
+            CaseKind::Mutated => {
+                let plan = recorded
+                    .observation
+                    .mutation
+                    .as_ref()
+                    .ok_or(CampaignError::MissingMutation(path))?;
+                adapter.replay_mutation(
+                    recorded.observation.case_id.clone(),
+                    plan.operations.clone(),
+                )?
+            }
+        };
+        if fresh != *recorded {
+            return Err(CampaignError::FreshReplayMismatch(path));
+        }
+    }
+    Ok(())
+}
+
 fn validate_regression(root: &Path) -> Result<(), CampaignError> {
     let bundle = read_verified_replay_bundle(&root.join(MUTATED_BUNDLE))?;
     let actual = read_bounded(
@@ -606,6 +729,10 @@ fn validate_coverage(bytes: &[u8]) -> Result<(), CampaignError> {
         ("stwo-demo-verifier-boundary", CoverageStatus::Covered),
         ("stwo-demo-replay-artifact", CoverageStatus::Covered),
         ("stwo-demo-witness-consistency", CoverageStatus::Covered),
+        (
+            "stwo-held-out-wide-fibonacci-witness",
+            CoverageStatus::Covered,
+        ),
         ("stwo-demo-campaign-artifact", CoverageStatus::Covered),
         ("stwo-verifier-boundary", CoverageStatus::Unsupported),
         ("broad-evidence-provenance", CoverageStatus::Unsupported),
@@ -634,6 +761,9 @@ fn inspect_unsealed_root(root: &Path) -> Result<(), CampaignError> {
             HONEST_BUNDLE,
             MUTATED_BUNDLE,
             REGRESSION_FILE,
+            HELD_OUT_HONEST_FILE,
+            HELD_OUT_PRESERVING_FILE,
+            HELD_OUT_VIOLATING_FILE,
             WITNESS_HONEST_FILE,
             WITNESS_PRESERVING_FILE,
             WITNESS_VIOLATING_FILE,
@@ -652,6 +782,9 @@ fn inspect_sealed_root(root: &Path) -> Result<(), CampaignError> {
             HONEST_BUNDLE,
             MUTATED_BUNDLE,
             REGRESSION_FILE,
+            HELD_OUT_HONEST_FILE,
+            HELD_OUT_PRESERVING_FILE,
+            HELD_OUT_VIOLATING_FILE,
             WITNESS_HONEST_FILE,
             WITNESS_PRESERVING_FILE,
             WITNESS_VIOLATING_FILE,
@@ -797,6 +930,24 @@ fn expected_cases() -> Vec<CampaignCase> {
             WITNESS_VIOLATING_FILE,
             "CONSTRAINT_VIOLATION_REJECTED",
         ),
+        (
+            HELD_OUT_HONEST_CASE,
+            "held_out_witness_consistency",
+            HELD_OUT_HONEST_FILE,
+            "HONEST_ACCEPTED",
+        ),
+        (
+            HELD_OUT_PRESERVING_CASE,
+            "held_out_witness_consistency",
+            HELD_OUT_PRESERVING_FILE,
+            "CONSTRAINT_PRESERVING_ACCEPTED",
+        ),
+        (
+            HELD_OUT_VIOLATING_CASE,
+            "held_out_witness_consistency",
+            HELD_OUT_VIOLATING_FILE,
+            "CONSTRAINT_VIOLATION_REJECTED",
+        ),
     ]
     .into_iter()
     .map(|(case_id, lane, artifact, expected_verdict)| CampaignCase {
@@ -822,6 +973,7 @@ Replay worker: `{replay_worker_sha256}`\n\n\
 - Honest real proof through raw PCS and framework verification.\n\
 - Generic OODS scalar corruption rejected at both verifier layers.\n\
 - Honest, relation-preserving, and relation-violating phase-bound witness replay.\n\
+- The same three witness outcomes over the precommitted upstream Wide Fibonacci target.\n\
 - Deterministic replay bundles and a generated Rust regression.\n\n\
 ## Not Established\n\n\
 {}\n",
@@ -974,7 +1126,10 @@ fn output_name(path: &Path) -> &'static str {
         Some(WITNESS_HONEST_FILE) => WITNESS_HONEST_FILE,
         Some(WITNESS_PRESERVING_FILE) => WITNESS_PRESERVING_FILE,
         Some(WITNESS_VIOLATING_FILE) => WITNESS_VIOLATING_FILE,
-        _ => "witness replay",
+        Some(HELD_OUT_HONEST_FILE) => HELD_OUT_HONEST_FILE,
+        Some(HELD_OUT_PRESERVING_FILE) => HELD_OUT_PRESERVING_FILE,
+        Some(HELD_OUT_VIOLATING_FILE) => HELD_OUT_VIOLATING_FILE,
+        _ => "replay artifact",
     }
 }
 
@@ -1001,6 +1156,9 @@ pub enum CampaignError {
     /// Witness replay validation or execution failed.
     #[error(transparent)]
     Witness(#[from] StwoWitnessError),
+    /// Held-out replay validation or execution failed.
+    #[error(transparent)]
+    HeldOut(#[from] HeldOutError),
     /// Boundary-adapter discovery failed.
     #[error(transparent)]
     Boundary(#[from] StwoBoundaryError),

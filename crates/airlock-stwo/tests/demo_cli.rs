@@ -151,6 +151,27 @@ fn cli_runs_verifies_and_renders_the_pinned_demo() {
             );
         }
     }
+
+    for (command, expected_verdict) in [
+        ("held-out-honest", "HONEST_ACCEPTED"),
+        ("held-out-preserving", "CONSTRAINT_PRESERVING_ACCEPTED"),
+        ("held-out-violating", "CONSTRAINT_VIOLATION_REJECTED"),
+    ] {
+        let output = run(&[command]);
+        assert!(output.status.success(), "{command}");
+        let document: serde_json::Value =
+            serde_json::from_slice(&output.stdout).expect("held-out JSON");
+        assert_eq!(
+            document["status"], "AIRLOCK_HELD_OUT_REPLAY_EXPECTED",
+            "{command}"
+        );
+        assert_eq!(document["verdict"], expected_verdict, "{command}");
+        assert_eq!(
+            document["target"], "stwo-held-out-wide-fibonacci-3-v1",
+            "{command}"
+        );
+        assert_eq!(document["requested_paths"], 11, "{command}");
+    }
     fs::remove_dir_all(parent).expect("remove CLI test directory");
 }
 

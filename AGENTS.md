@@ -33,14 +33,16 @@ claim.
   transcript result vocabularies remain separate assurance lanes.
 - `crates/airlock-stwo`: pinned executable integration adapter, OODS-sample
   mutations, raw-PCS/framework differential replay, subprocess containment,
-  deterministic replay-bundle verification, and one phase-bound
-  pre-commitment witness-consistency campaign. Replay bundles remain part of
-  this integration adapter; they do not mark evidence/provenance covered.
+  deterministic replay-bundle verification, one phase-bound demo witness
+  campaign, and one precommitted upstream held-out component. Replay bundles
+  remain part of this integration adapter; they do not mark
+  evidence/provenance covered.
   Cross-lane comparison here does not merge AuditIR, verifier-boundary,
   transcript, or evidence verdicts into one assurance result.
 - `scripts/demo-stwo-boundary.sh`: local honest/mutation replay, replay-bundle
-  verification, full witness evidence, regression generation, deterministic
-  campaign sealing, and fresh campaign verification. It must fail closed.
+  verification, demo and held-out witness evidence, regression generation,
+  deterministic campaign sealing, and fresh campaign verification. It must
+  fail closed.
 - `crates/airlock-cli`: lane-specific commands and fail-closed exit behavior.
 - `fixtures/seeded`: synthetic vulnerable/fixed regression pairs.
 - `docs/SPEC.md`: current technical scope and non-goals.
