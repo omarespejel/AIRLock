@@ -28,8 +28,8 @@ This policy covers vulnerabilities in AIRLock itself, including false-green
 analysis, lossy exports, unsafe parsing, transcript-modeling errors, and report
 or artifact integrity failures.
 
-A vulnerability discovered in Stwo, SparseProve, or another downstream or
-upstream project should be reported privately to that project's security team.
+A vulnerability discovered in Stwo or another downstream or upstream project
+should be reported privately to that project's security team.
 AIRLock may later retain a synthetic regression that does not disclose an
 embargoed construction.
 

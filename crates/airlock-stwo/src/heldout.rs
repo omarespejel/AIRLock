@@ -125,7 +125,8 @@ impl HeldOutWitness {
     }
 }
 
-/// Executable adapter for the precommitted nonlinear held-out component.
+/// Executable adapter for the independently selected nonlinear held-out
+/// component.
 pub struct HeldOutAdapter {
     manifest: AuditManifest,
     column_ids: Vec<String>,

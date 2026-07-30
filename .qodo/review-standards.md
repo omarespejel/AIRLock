@@ -2,15 +2,14 @@
 
 Use these standards for Qodo v2 / agentic review and as manual reviewer context.
 
-Aligned with the SparseProve / stwo-ml reviewer process: soundness and claim
-hygiene first; style last. Adapted for an AIR *assurance tool*, not a zkML
-prover.
+Soundness and claim hygiene come first; style comes last. These standards are
+for an AIR assurance tool, not an application prover.
 
 ## Non-Negotiables
 
 - No public claim may present AIRLock `StaticPass`, solver `UNSAT`, or mutation
   score as proving Circle-FRI, Fiat–Shamir, transcript composition, receipt
-  parsing, or end-to-end SparseProve security.
+  parsing, or end-to-end application security.
 - `UNKNOWN`, timeout, `UNSUPPORTED`, and unmodeled scope are never green and
   never `COVERED`.
 - AuditIR must remain lossless enough for the declared lints: uncompressed

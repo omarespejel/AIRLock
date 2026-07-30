@@ -58,5 +58,5 @@ Reviewer unavailability or manual replacement review:
 
 - [ ] This PR does not claim Circle-FRI / Fiat–Shamir / end-to-end STARK security.
 - [ ] This PR does not treat `UNKNOWN` / timeout / `UNSUPPORTED` as green.
-- [ ] This PR does not present AIRLock results as SparseProve production soundness.
+- [ ] This PR does not present AIRLock results as whole-system production soundness.
 - [ ] Seeded-defect expectations are stated when lint/IR behavior changes.

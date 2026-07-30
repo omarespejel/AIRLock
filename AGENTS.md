@@ -10,8 +10,8 @@ AIRLock is adversarial assurance tooling for STARK systems. It analyzes what a
 verifier checks and searches for witnesses and proof structures that honest
 provers do not emit.
 
-AIRLock is not itself a proof that Stwo, Circle FRI, SparseProve, or any other
-system is sound. Keep these assurance lanes separate:
+AIRLock is not itself a proof that Stwo, Circle FRI, or any other system is
+sound. Keep these assurance lanes separate:
 
 - AIR relation
 - statement binding
@@ -34,18 +34,19 @@ claim.
 - `crates/airlock-stwo`: pinned executable integration adapter, OODS-sample
   mutations, raw-PCS/framework differential replay, subprocess containment,
   deterministic replay-bundle verification, one phase-bound demo witness
-  campaign, and one precommitted upstream held-out component. Replay bundles
-  remain part of this integration adapter; they do not mark
+  campaign, and one independently selected upstream held-out component. Replay
+  bundles remain part of this integration adapter; they do not mark
   evidence/provenance covered.
   Cross-lane comparison here does not merge AuditIR, verifier-boundary,
   transcript, or evidence verdicts into one assurance result.
-- `scripts/demo-stwo-boundary.sh`: local honest/mutation replay, replay-bundle
+- `scripts/demo-airlock.sh`: one-command offline honest/mutation replay, replay-bundle
   verification, demo and held-out witness evidence, regression generation,
-  deterministic campaign sealing, and fresh campaign verification. It must
-  fail closed.
+  deterministic campaign sealing, portable-content checks, and fresh campaign
+  verification. It must fail closed.
 - `crates/airlock-cli`: lane-specific commands and fail-closed exit behavior.
 - `fixtures/seeded`: synthetic vulnerable/fixed regression pairs.
 - `docs/SPEC.md`: current technical scope and non-goals.
+- `docs/DEMO.md`: supported 30-minute external demo flow and exact non-claims.
 - `docs/coverage.yaml`: explicit surface inventory.
 - `scripts/verify-local.sh`: canonical local release gate.
 - `.codex/START_HERE.md`: current handoff and read order.
@@ -56,8 +57,12 @@ claim.
   dirty or agent-owned checkout; create a worktree instead.
 - Do not push directly to `main`. Use a focused, non-draft pull request unless
   the repository owner explicitly asks otherwise.
-- Do not edit sibling Stwo, SparseProve, or other upstream repositories from an
-  AIRLock task. Pin and report their exact commits instead.
+- Do not directly edit sibling Stwo or other upstream or downstream
+  repositories from an AIRLock task. The sole bootstrap exception is
+  `scripts/setup-stwo.sh`: it may create a missing `../stwo` from the exact
+  checked pin and patch, but it refuses to replace an existing checkout and
+  verifies the result before installing it. Change that pin, patch, or setup
+  flow in an AIRLock PR rather than modifying the installed sibling checkout.
 - Never add secrets, customer data, private proof material, embargoed findings,
   or production exploit details. Follow `SECURITY.md` for disclosure.
 - Prefer generic invariants over named-attack checks. Seeded fixtures prove

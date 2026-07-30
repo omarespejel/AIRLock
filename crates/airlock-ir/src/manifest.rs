@@ -13,7 +13,7 @@ pub struct AuditManifest {
     pub schema: String,
     /// Schema version.
     pub schema_version: String,
-    /// Application / SparseProve commit when known.
+    /// Application source commit when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_commit: Option<String>,
     /// Sibling Stwo commit when known.

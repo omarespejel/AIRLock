@@ -7,8 +7,8 @@ malicious witnesses an honest prover would never construct, and refuses to
 treat an AIR surface as reviewed when it is unmodeled, unsupported, or
 inconclusive.
 
-This repository does **not** claim that any current SparseProve AIR is sound,
-or that a green AIRLock report establishes whole-system STARK security.
+This repository does **not** claim that an integrated AIR is sound or that a
+green AIRLock report establishes whole-system STARK security.
 
 ## Status (v0)
 
@@ -17,7 +17,7 @@ or that a green AIRLock report establishes whole-system STARK security.
 | AuditIR schema (`airlock-ir`) | landed |
 | Static gate (`airlock-lint`) | schema/shape + parameter/phase closure + preprocessed integrity + Q8 support/functionality + encoder bound + LogUp finalize |
 | Verifier boundary contracts (`airlock-boundary`) | proof-neutral request/supply/consumption and typed transcript oracles |
-| Pinned Stwo adapter (`airlock-stwo`) | real demo proof, verifier-derived OODS requests, sample-only mutations, raw-PCS/framework replay, phase-bound pre-commitment witness injection, one precommitted upstream Wide Fibonacci held-out target, subprocess containment, verified replay bundles, generated Rust regression, sealed campaign manifest |
+| Pinned Stwo adapter (`airlock-stwo`) | real demo proof, verifier-derived OODS requests, sample-only mutations, raw-PCS/framework replay, phase-bound pre-commitment witness injection, one independently selected upstream Wide Fibonacci target, subprocess containment, verified replay bundles, generated Rust regression, sealed portable campaign |
 | CLI (`airlock`) | `air`, `coverage`, `schema` |
 | Stwo `AuditEvaluator` exporter | landed (`airlock-export`); concrete differential checks cover one synthetic cross-interaction AIR |
 | cvc5 / Lean | later PRs |
@@ -34,40 +34,45 @@ scripts/setup-stwo.sh
 
 scripts/verify-local.sh
 
-cargo +nightly-2026-01-15 test -p airlock-stwo --locked
+cargo +nightly-2026-01-15 test -p airlock-stwo --locked --offline
 
 # Exporter-faithfulness differential against Stwo's concrete evaluators.
 cargo +nightly-2026-01-15 test -p airlock-export \
-  --test assert_evaluator_faithfulness --locked
+  --test assert_evaluator_faithfulness --locked --offline
 
-# Honest proof, adversarial rejection, full witness records for the demo and
-# held-out target, generated Rust regression, deterministic campaign manifest,
-# and fresh replay verification.
-scripts/demo-stwo-boundary.sh /tmp/airlock-stwo-campaign
+# Build, run, package, and freshly verify the complete offline demo.
+scripts/demo-airlock.sh /tmp/airlock-demo
 
 # Recheck a campaign against its source commit and the pinned worker.
-cargo +nightly-2026-01-15 run -p airlock-stwo --bin airlock-stwo-demo -- \
+TARGET_DIR="${CARGO_TARGET_DIR:-target}"
+cargo +nightly-2026-01-15 run --locked --offline \
+  -p airlock-stwo --bin airlock-stwo-demo -- \
   verify-campaign \
-  --root /tmp/airlock-stwo-campaign \
+  --root /tmp/airlock-demo \
   --expected-airlock-commit "$(git rev-parse HEAD)" \
-  --worker target/debug/airlock-stwo-worker
+  --worker "$TARGET_DIR/debug/airlock-stwo-worker"
 
 # Direct phase-bound witness campaigns are also exposed by the demo binary.
-cargo +nightly-2026-01-15 run -p airlock-stwo --bin airlock-stwo-demo -- \
+cargo +nightly-2026-01-15 run --locked --offline \
+  -p airlock-stwo --bin airlock-stwo-demo -- \
   witness-preserving
 
-# The precommitted held-out target uses Stwo's real WideFibonacciEval<3>.
-cargo +nightly-2026-01-15 run -p airlock-stwo --bin airlock-stwo-demo -- \
+# The held-out target uses Stwo's real WideFibonacciEval<3>.
+cargo +nightly-2026-01-15 run --locked --offline \
+  -p airlock-stwo --bin airlock-stwo-demo -- \
   held-out-preserving
 
-cargo +nightly-2026-01-15 run -p airlock-cli -- air \
+cargo +nightly-2026-01-15 run --locked --offline -p airlock-cli -- air \
   --manifest fixtures/seeded/q8_padded_table_vulnerable.json
 # expects StaticFail (exit 1)
 
-cargo +nightly-2026-01-15 run -p airlock-cli -- air \
+cargo +nightly-2026-01-15 run --locked --offline -p airlock-cli -- air \
   --manifest fixtures/seeded/q8_padded_table_fixed.json
 # expects StaticPass (exit 0); overall release stays BLOCKED
 ```
+
+See [docs/DEMO.md](docs/DEMO.md) for the 30-minute live-demo flow, expected
+terminal markers, evidence inventory, and exact non-claims.
 
 ## AI reviewers
 
@@ -135,7 +140,8 @@ replay. Solver/Lean tracks remain separate lanes.
   repository path. It does not broaden coverage beyond that component or prove
   Stwo, FRI, Fiat--Shamir, or application soundness.
 - `UNKNOWN` / timeout / `UNSUPPORTED` are never green.
-- Release status stays `BLOCKED` until all paper-relevant lanes are covered.
+- Release status stays `BLOCKED` while any required assurance lane is not
+  `COVERED`.
 
 ## License
 

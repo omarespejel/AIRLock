@@ -134,7 +134,7 @@ reviews:
       instructions: |
         Check that public status matches code. Flag unsupported soundness
         claims, missing non-claims, and instructions that tell users a green
-        AIRLock run proves SparseProve or Stwo security.
+        AIRLock run proves an integrated system or Stwo security.
     - path: ".github/**"
       instructions: |
         Review as reviewer-control-plane. Flag instructions that weaken the
@@ -178,7 +178,7 @@ reviews:
         instructions: |
           Fail if a PR presents AIRLock static PASS, solver UNSAT, or mutation
           score as proving Circle-FRI, Fiat-Shamir, transcript composition,
-          receipt parsing, or end-to-end SparseProve security.
+          receipt parsing, or end-to-end application security.
       - mode: error
         name: "No timeout-as-green"
         instructions: |

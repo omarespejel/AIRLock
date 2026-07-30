@@ -15,7 +15,7 @@ AIRLock is **not** a whole-system STARK soundness verifier.
 | AIR relation | `airlock air` | static gate over AuditIR |
 | Statement binding | separate | `OUT_OF_MODEL` |
 | Verifier boundary | `airlock-boundary`, `airlock-stwo` | contracts, one pinned executable integration adapter, and its replay records |
-| Witness consistency | `airlock-boundary`, `airlock-stwo` | one original-phase demo column plus one precommitted upstream three-column held-out target; separate AuditIR evaluation, real proof regeneration, and full verifier replay when proof generation succeeds |
+| Witness consistency | `airlock-boundary`, `airlock-stwo` | one original-phase demo column plus one independently selected upstream three-column held-out target; separate AuditIR evaluation, real proof regeneration, and full verifier replay when proof generation succeeds |
 | Protocol / FRI / FS | `airlock-boundary` | typed transcript contract/oracle only; executable transcript capture remains `UNINSTANTIATED` |
 | Evidence / provenance | separate | `NOT_RUN`; replay bundles do not establish authorship or external provenance |
 
@@ -276,7 +276,7 @@ temporary offline Cargo project.
 ## Fixed campaign artifacts
 
 The Stwo demo can persist complete typed witness replays and seal the fixed
-transition-demo and precommitted held-out inventory into `campaign.json`,
+transition-demo and independently selected held-out inventory into `campaign.json`,
 `SUMMARY.md`, a byte-for-byte
 coverage snapshot, and top-level `SHA256SUMS`. The manifest binds a
 caller-pinned 40-character AIRLock Git commit, the exact Stwo source identity,
@@ -286,7 +286,10 @@ Verification enforces a strict root and nested inventory, reads every file
 through a predeclared bound without following symbolic links, recomputes all
 reports and digests, reconstructs the generated regression, and reruns both
 boundary cases, all three transition-demo witness cases, and all three
-held-out witness cases.
+held-out witness cases. Every checksum-validated payload must be UTF-8 and free
+of local absolute paths, credential markers, AI attribution, internal planning
+terms, and prior-version narrative. The matched marker is never echoed in an
+error.
 
 The summary and manifest are deterministic for identical executions. They
 contain no timestamps or local paths. The source commit remains a
@@ -294,6 +297,22 @@ caller-supplied pin; the unsigned campaign does not prove authorship, trusted
 publication time, machine identity, broad Stwo coverage, or cryptographic
 soundness. Statement binding and executable transcript, Fiat--Shamir, and FRI
 assurance remain unsupported and appear beside the successful cases.
+
+## External demo surface
+
+`scripts/demo-airlock.sh OUTPUT_DIRECTORY` is the supported one-command demo.
+It rejects a dirty source checkout or an existing output path before building,
+verifies the pinned sibling Stwo source, and passes `--offline` to every Cargo
+operation. It then executes the verifier-boundary, transition-witness,
+held-out-witness, generated-regression, campaign-seal, and fresh-verification
+stages. Each stage emits stable `AIRLOCK_DEMO_STAGE` begin/pass markers; only a
+complete run emits `AIRLOCK_DEMO_COMPLETE`.
+
+The resulting directory is the fixed campaign artifact described above. It is
+portable and self-verifying, but unsigned: its checksums establish consistency,
+not producer identity, machine attestation, or trusted time. A passing demo is
+executable evidence for the exact covered surfaces, not a proof of
+cryptographic soundness or absence of defects elsewhere.
 
 ## Seeded defects
 
@@ -310,4 +329,4 @@ M31 canonical values, encoder widths `0/1/8/127/128`, and asymmetric biases.
 - cvc5 / Picus / Lean
 - Circle-FRI security ledger
 - Broad Stwo component and production-integration coverage beyond the demo adapter
-- Live SparseProve exporter (feature-flagged later)
+- Live application-component exporter
