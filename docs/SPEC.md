@@ -15,7 +15,7 @@ AIRLock is **not** a whole-system STARK soundness verifier.
 | AIR relation | `airlock air` | static gate over AuditIR |
 | Statement binding | separate | `OUT_OF_MODEL` |
 | Verifier boundary | `airlock-boundary`, `airlock-stwo` | contracts, one pinned executable integration adapter, and its replay records |
-| Witness consistency | `airlock-boundary`, `airlock-stwo` | one original-phase demo column, separate AuditIR evaluation and verifier-boundary observations, real proof regeneration, and full verifier replay when proof generation succeeds |
+| Witness consistency | `airlock-boundary`, `airlock-stwo` | one original-phase demo column plus one precommitted upstream three-column held-out target; separate AuditIR evaluation, real proof regeneration, and full verifier replay when proof generation succeeds |
 | Protocol / FRI / FS | `airlock-boundary` | typed transcript contract/oracle only; executable transcript capture remains `UNINSTANTIATED` |
 | Evidence / provenance | separate | `NOT_RUN`; replay bundles do not establish authorship or external provenance |
 
@@ -229,6 +229,20 @@ a solver search, or proof that no other witness is accepted. Public,
 interaction, reduction-phase, other-column, and other-scalar mutation requests
 fail as unsupported.
 
+`HeldOutAdapter` applies the same contracts to the target selected in issue
+`#14` before its adapter existed: Stwo's upstream `WideFibonacciEval<3>` at log
+size 4. It exports the real evaluator, checks the exact set of three original
+column identities, retains their physical mask-declaration order explicitly,
+and derives the OODS request from the real component. Its honest witness uses
+`a = 0`, `b = -1/2`, and `c = 1/4` in M31. Incrementing all three cells at the
+same row gives `a = 1`, `b = 1/2`, and `c = 5/4`, which still satisfies
+`c = a^2 + b^2`; incrementing only `c` violates the relation. The checked
+matrix exercises both mutations at every one of the 16 physical rows through
+AuditIR and Stwo's real prove-and-verify path. Unsupported phases, columns,
+rows, scalar operators, and all other Stwo examples fail closed or remain
+outside coverage. This is one held-out adapter-generality check, not a
+statistical benchmark or broad Stwo assurance.
+
 ## Isolated replay records
 
 `airlock-stwo-worker` accepts a bounded, content-addressed replay request and
@@ -248,8 +262,9 @@ runner is subprocess containment, not an OS sandbox. The bundle is deterministic
 and self-consistent, but it is not signed and therefore does not authenticate
 its producer.
 
-`airlock-stwo-demo` exposes honest replay, OODS-sample corruption, bundle
-verification, and path-independent Rust-regression generation. Run commands
+`airlock-stwo-demo` exposes honest replay, OODS-sample corruption, demo and
+held-out witness replay, bundle verification, and path-independent
+Rust-regression generation. Run commands
 exit successfully only when the replay bundle is internally consistent and its
 verdict matches the requested case. The verify command additionally requires a
 fresh execution with the supplied worker to reproduce the stored record
@@ -261,15 +276,17 @@ temporary offline Cargo project.
 ## Fixed campaign artifacts
 
 The Stwo demo can persist complete typed witness replays and seal the fixed
-transition-demo inventory into `campaign.json`, `SUMMARY.md`, a byte-for-byte
+transition-demo and precommitted held-out inventory into `campaign.json`,
+`SUMMARY.md`, a byte-for-byte
 coverage snapshot, and top-level `SHA256SUMS`. The manifest binds a
 caller-pinned 40-character AIRLock Git commit, the exact Stwo source identity,
-the SHA-256 of the exact replay worker shared by both boundary cases, five case
+the SHA-256 of the exact replay worker shared by both boundary cases, eight case
 identities and verdicts, fixed non-claims, and every payload digest and size.
 Verification enforces a strict root and nested inventory, reads every file
 through a predeclared bound without following symbolic links, recomputes all
 reports and digests, reconstructs the generated regression, and reruns both
-boundary cases and all three witness cases.
+boundary cases, all three transition-demo witness cases, and all three
+held-out witness cases.
 
 The summary and manifest are deterministic for identical executions. They
 contain no timestamps or local paths. The source commit remains a

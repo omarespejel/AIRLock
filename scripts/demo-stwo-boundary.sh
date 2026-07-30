@@ -27,16 +27,20 @@ REGRESSION="$OUTPUT_ROOT/corrupt-oods-sample-regression.rs"
 WITNESS_HONEST="$OUTPUT_ROOT/witness-honest.json"
 WITNESS_PRESERVING="$OUTPUT_ROOT/witness-preserving.json"
 WITNESS_VIOLATING="$OUTPUT_ROOT/witness-violating.json"
+HELD_OUT_HONEST="$OUTPUT_ROOT/heldout-honest.json"
+HELD_OUT_PRESERVING="$OUTPUT_ROOT/heldout-preserving.json"
+HELD_OUT_VIOLATING="$OUTPUT_ROOT/heldout-violating.json"
 
-run_witness_case() {
+run_typed_replay_case() {
   local command="$1"
   local expected_verdict="$2"
   local evidence="$3"
+  local expected_status="$4"
   local result
 
   result="$("$DEMO" "$command" --output "$evidence")"
   test -s "$evidence"
-  grep -Fq '"status":"AIRLOCK_WITNESS_REPLAY_EXPECTED"' <<<"$result"
+  grep -Fq "\"status\":\"$expected_status\"" <<<"$result"
   grep -Fq "\"verdict\":\"$expected_verdict\"" <<<"$result"
   grep -Fq '"artifact_sha256":"' <<<"$result"
   grep -Fq '"observation": {' "$evidence"
@@ -50,15 +54,36 @@ run_witness_case() {
 "$DEMO" verify --bundle "$HONEST" --worker "$WORKER"
 "$DEMO" verify --bundle "$MUTATED" --worker "$WORKER"
 "$DEMO" generate-regression --bundle "$MUTATED" --output "$REGRESSION"
-run_witness_case witness-honest HONEST_ACCEPTED "$WITNESS_HONEST"
-run_witness_case \
+run_typed_replay_case \
+  witness-honest \
+  HONEST_ACCEPTED \
+  "$WITNESS_HONEST" \
+  AIRLOCK_WITNESS_REPLAY_EXPECTED
+run_typed_replay_case \
   witness-preserving \
   CONSTRAINT_PRESERVING_ACCEPTED \
-  "$WITNESS_PRESERVING"
-run_witness_case \
+  "$WITNESS_PRESERVING" \
+  AIRLOCK_WITNESS_REPLAY_EXPECTED
+run_typed_replay_case \
   witness-violating \
   CONSTRAINT_VIOLATION_REJECTED \
-  "$WITNESS_VIOLATING"
+  "$WITNESS_VIOLATING" \
+  AIRLOCK_WITNESS_REPLAY_EXPECTED
+run_typed_replay_case \
+  held-out-honest \
+  HONEST_ACCEPTED \
+  "$HELD_OUT_HONEST" \
+  AIRLOCK_HELD_OUT_REPLAY_EXPECTED
+run_typed_replay_case \
+  held-out-preserving \
+  CONSTRAINT_PRESERVING_ACCEPTED \
+  "$HELD_OUT_PRESERVING" \
+  AIRLOCK_HELD_OUT_REPLAY_EXPECTED
+run_typed_replay_case \
+  held-out-violating \
+  CONSTRAINT_VIOLATION_REJECTED \
+  "$HELD_OUT_VIOLATING" \
+  AIRLOCK_HELD_OUT_REPLAY_EXPECTED
 
 test -s "$REGRESSION"
 if grep -Fq "$ROOT" "$REGRESSION"; then

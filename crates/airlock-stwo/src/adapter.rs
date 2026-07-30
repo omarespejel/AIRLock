@@ -18,7 +18,7 @@ use stwo::core::vcs_lifted::blake2_merkle::Blake2sM31MerkleChannel;
 use stwo::core::verifier::{COMPOSITION_LOG_SPLIT, VerificationError, verify};
 use thiserror::Error;
 
-use crate::fixture::{DemoComponent, DemoFixture, DemoProof, build_demo_fixture};
+use crate::fixture::{DemoFixture, DemoProof, build_demo_fixture};
 use crate::mutation::{StwoMutationError, mutate_proof};
 use crate::{STWO_DEMO_TARGET, STWO_SOURCE_ID};
 
@@ -153,7 +153,7 @@ impl StwoBoundaryAdapter {
 
     /// Derive exact per-column sample counts from the component's verifier masks.
     pub fn contract(&self) -> Result<BoundaryContract, StwoBoundaryError> {
-        derive_contract(
+        derive_component_contract(
             STWO_DEMO_TARGET,
             &self.source_id,
             &self.fixture.component,
@@ -264,10 +264,10 @@ impl StwoBoundaryAdapter {
     }
 }
 
-fn derive_contract(
+pub(crate) fn derive_component_contract(
     target: &str,
     source_id: &str,
-    component: &DemoComponent,
+    component: &dyn Component,
     config: PcsConfig,
 ) -> Result<BoundaryContract, StwoBoundaryError> {
     let components = Components {
@@ -312,7 +312,7 @@ fn max_log_degree_bound(
 }
 
 pub(crate) fn verify_framework(
-    component: &DemoComponent,
+    component: &dyn Component,
     config: PcsConfig,
     proof: DemoProof,
 ) -> Result<(), VerifierFailure> {
@@ -323,7 +323,7 @@ pub(crate) fn verify_framework(
 }
 
 fn verify_raw_pcs(
-    component: &DemoComponent,
+    component: &dyn Component,
     config: PcsConfig,
     proof: DemoProof,
 ) -> Result<(), VerifierFailure> {
@@ -357,7 +357,7 @@ fn verify_raw_pcs(
 }
 
 fn register_trace_commitments(
-    component: &DemoComponent,
+    component: &dyn Component,
     proof: &DemoProof,
     channel: &mut Blake2sM31Channel,
     scheme: &mut CommitmentSchemeVerifier<Blake2sM31MerkleChannel>,
