@@ -33,9 +33,10 @@ claim.
   transcript result vocabularies remain separate assurance lanes.
 - `crates/airlock-stwo`: pinned executable integration adapter, OODS-sample
   mutations, raw-PCS/framework differential replay, subprocess containment,
-  deterministic replay-bundle verification, one phase-bound demo witness
-  campaign, and one independently selected upstream held-out component. Replay
-  bundles remain part of this integration adapter; they do not mark
+  deterministic replay-bundle verification, phase-bound witness campaigns,
+  one independently selected upstream held-out component, and a deterministic
+  cross-target original-cell mutation matrix. Replay bundles and witness
+  matrices remain part of this integration adapter; they do not mark
   evidence/provenance covered.
   Cross-lane comparison here does not merge AuditIR, verifier-boundary,
   transcript, or evidence verdicts into one assurance result.

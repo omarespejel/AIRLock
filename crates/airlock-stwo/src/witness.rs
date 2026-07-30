@@ -134,6 +134,13 @@ impl StwoWitnessAdapter {
         self.seed.original_column.len()
     }
 
+    /// SHA-256 of the exact exported AuditIR manifest.
+    pub fn audit_ir_sha256(&self) -> Result<String, StwoWitnessError> {
+        hash_manifest(&self.manifest)
+            .map_err(|error| StwoWitnessError::Serialization(error.to_string()))
+            .map(|digest| digest.0)
+    }
+
     /// Regenerate and verify the unmodified witness.
     pub fn replay_honest(&self) -> Result<StwoWitnessReplay, StwoWitnessError> {
         self.replay("honest-witness", CaseKind::Honest, self.seed.clone(), None)
@@ -151,13 +158,25 @@ impl StwoWitnessAdapter {
         &self,
         row: usize,
     ) -> Result<WitnessMutationOperation, StwoWitnessError> {
+        self.mutation_operation(row, ScalarMutation::Increment)
+    }
+
+    /// Build one typed original-column scalar mutation after validating its row.
+    pub fn mutation_operation(
+        &self,
+        row: usize,
+        mutation: ScalarMutation,
+    ) -> Result<WitnessMutationOperation, StwoWitnessError> {
         if row >= self.row_count() {
             return Err(StwoWitnessError::RowOutOfBounds {
                 row,
                 rows: self.row_count(),
             });
         }
-        Ok(self.increment_operation(row))
+        Ok(WitnessMutationOperation::ReplaceM31 {
+            path: WitnessCellPath::new(WitnessPhase::Original, &self.column_id, row),
+            value: mutation,
+        })
     }
 
     /// Apply phase-bound cell mutations before commitment and replay the real proof path.
@@ -232,9 +251,7 @@ impl StwoWitnessAdapter {
         };
         let audit_ir_constraints_hold = constraints_hold(component, &assignment)
             .map_err(|error| StwoWitnessError::ConcreteEvaluation(error.to_string()))?;
-        let audit_ir_sha256 = hash_manifest(&self.manifest)
-            .map_err(|error| StwoWitnessError::Serialization(error.to_string()))?
-            .0;
+        let audit_ir_sha256 = self.audit_ir_sha256()?;
 
         let (proof_generation, verifier) = match catch_unwind(AssertUnwindSafe(|| {
             build_demo_fixture_with_values(&witness.original_column)

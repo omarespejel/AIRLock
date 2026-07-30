@@ -19,6 +19,7 @@ mod replay_bundle;
 mod request;
 mod temp;
 mod witness;
+mod witness_matrix;
 
 pub use adapter::{
     DifferentialReplay, DifferentialVerdict, LayerReplay, StwoBoundaryAdapter, StwoBoundaryError,
@@ -49,6 +50,11 @@ pub use request::{
 };
 pub use witness::{
     STWO_DEMO_WITNESS_TARGET, StwoWitnessAdapter, StwoWitnessError, StwoWitnessReplay,
+};
+pub use witness_matrix::{
+    MAX_WITNESS_MATRIX_BYTES, STWO_WITNESS_MATRIX_ID, StwoWitnessMatrixError,
+    read_stwo_witness_matrix, run_stwo_witness_matrix, validate_stwo_witness_matrix,
+    verify_stwo_witness_matrix_fresh, write_stwo_witness_matrix,
 };
 
 /// Upstream source commit whose dependency trees are pinned by AIRLock.

@@ -8,8 +8,10 @@ use std::time::Duration;
 use airlock_boundary::{MutationOperation, ScalarMutation, WitnessVerdict};
 use airlock_stwo::{
     HeldOutAdapter, ReplayRequest, StwoBoundaryAdapter, StwoWitnessAdapter,
-    generate_regression_source, read_verified_replay_bundle, run_isolated_replay, seal_campaign,
-    verify_campaign, write_held_out_replay, write_replay_bundle, write_witness_replay,
+    generate_regression_source, read_stwo_witness_matrix, read_verified_replay_bundle,
+    run_isolated_replay, run_stwo_witness_matrix, seal_campaign, verify_campaign,
+    verify_stwo_witness_matrix_fresh, write_held_out_replay, write_replay_bundle,
+    write_stwo_witness_matrix, write_witness_replay,
 };
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
@@ -62,6 +64,18 @@ enum Command {
     HeldOutPreserving(WitnessArgs),
     /// Mutate the upstream held-out witness and require relation rejection.
     HeldOutViolating(WitnessArgs),
+    /// Run the frozen cross-target cell/operator matrix and write its artifact.
+    WitnessMatrix {
+        /// New JSON artifact; existing files are never overwritten.
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Validate a matrix artifact and freshly replay every declared case.
+    VerifyWitnessMatrix {
+        /// Existing JSON matrix artifact.
+        #[arg(long)]
+        artifact: PathBuf,
+    },
     /// Seal the fixed campaign inventory with a source-bound manifest.
     SealCampaign {
         /// Existing campaign root containing only the executed payload files.
@@ -151,6 +165,45 @@ fn main() -> Result<()> {
         Command::HeldOutHonest(args) => run_held_out_case(HeldOutDemoCase::Honest, args),
         Command::HeldOutPreserving(args) => run_held_out_case(HeldOutDemoCase::Preserving, args),
         Command::HeldOutViolating(args) => run_held_out_case(HeldOutDemoCase::Violating, args),
+        Command::WitnessMatrix { output } => {
+            let campaign = run_stwo_witness_matrix().context("run complete witness matrix")?;
+            let artifact_sha256 = write_stwo_witness_matrix(&output, &campaign)
+                .with_context(|| format!("write {}", output.display()))?;
+            let (total, preserving, rejected) = matrix_counts(&campaign);
+            println!(
+                "{}",
+                json!({
+                    "status": "AIRLOCK_WITNESS_MATRIX_COMPLETE",
+                    "matrix_id": campaign.matrix_id,
+                    "targets": campaign.targets.len(),
+                    "total": total,
+                    "constraint_preserving_accepted": preserving,
+                    "constraint_violation_rejected": rejected,
+                    "artifact_sha256": artifact_sha256,
+                })
+            );
+            Ok(())
+        }
+        Command::VerifyWitnessMatrix { artifact } => {
+            let (campaign, artifact_sha256) = read_stwo_witness_matrix(&artifact)
+                .with_context(|| format!("read {}", artifact.display()))?;
+            verify_stwo_witness_matrix_fresh(&campaign)
+                .with_context(|| format!("freshly verify {}", artifact.display()))?;
+            let (total, preserving, rejected) = matrix_counts(&campaign);
+            println!(
+                "{}",
+                json!({
+                    "status": "AIRLOCK_WITNESS_MATRIX_REPLAY_MATCHED",
+                    "matrix_id": campaign.matrix_id,
+                    "targets": campaign.targets.len(),
+                    "total": total,
+                    "constraint_preserving_accepted": preserving,
+                    "constraint_violation_rejected": rejected,
+                    "artifact_sha256": artifact_sha256,
+                })
+            );
+            Ok(())
+        }
         Command::SealCampaign {
             root,
             airlock_commit,
@@ -189,6 +242,19 @@ fn main() -> Result<()> {
             Ok(())
         }
     }
+}
+
+fn matrix_counts(campaign: &airlock_boundary::WitnessMatrixCampaign) -> (usize, usize, usize) {
+    campaign
+        .targets
+        .iter()
+        .fold((0, 0, 0), |(total, preserving, rejected), target| {
+            (
+                total + target.counts.total,
+                preserving + target.counts.constraint_preserving_accepted,
+                rejected + target.counts.constraint_violation_rejected,
+            )
+        })
 }
 
 #[derive(Clone, Copy)]
