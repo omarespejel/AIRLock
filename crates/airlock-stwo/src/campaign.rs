@@ -6,16 +6,17 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use airlock_boundary::{CaseKind, WitnessVerdict};
+use airlock_boundary::{CaseKind, MutationOperation, ScalarMutation, WitnessVerdict};
 use airlock_ir::{CoverageManifest, CoverageStatus};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::{
-    DifferentialVerdict, IsolatedReplayError, ReplayBundleError, STWO_SOURCE_ID,
-    StwoWitnessAdapter, StwoWitnessError, StwoWitnessReplay, generate_regression_source,
-    read_verified_replay_bundle, run_isolated_replay,
+    DifferentialVerdict, IsolatedReplayError, ReplayBundleError, ReplayRequest, STWO_SOURCE_ID,
+    StwoBoundaryAdapter, StwoBoundaryError, StwoWitnessAdapter, StwoWitnessError,
+    StwoWitnessReplay, generate_regression_source, read_verified_replay_bundle,
+    run_isolated_replay,
 };
 
 /// Stable schema identifier for a sealed campaign.
@@ -336,16 +337,29 @@ fn read_campaign(
 }
 
 fn validate_boundary_and_witness_artifacts(root: &Path) -> Result<(), CampaignError> {
+    let boundary_adapter = StwoBoundaryAdapter::new()?;
+    let expected_honest_request = ReplayRequest::honest();
+    let expected_mutated_request = ReplayRequest::mutation(
+        "corrupt-oods-sample",
+        vec![MutationOperation::ReplaceScalar {
+            path: boundary_adapter.first_sampled_value_path()?,
+            value: ScalarMutation::Increment,
+        }],
+    );
+
     let honest = read_verified_replay_bundle(&root.join(HONEST_BUNDLE))?;
     let honest_replay = honest
         .report
         .replay
         .as_ref()
         .ok_or(CampaignError::MissingReplay("honest"))?;
-    if honest.report.case_id != "honest-baseline"
+    if honest.request != expected_honest_request
+        || honest.report.case_id != "honest-baseline"
+        || !honest.report.worker_args.is_empty()
+        || honest.report.timeout_ms != 30_000
         || honest_replay.verdict != DifferentialVerdict::HonestAccepted
     {
-        return Err(CampaignError::WrongRecordedVerdict("honest"));
+        return Err(CampaignError::WrongRecordedCase("honest"));
     }
 
     let mutated = read_verified_replay_bundle(&root.join(MUTATED_BUNDLE))?;
@@ -354,32 +368,53 @@ fn validate_boundary_and_witness_artifacts(root: &Path) -> Result<(), CampaignEr
         .replay
         .as_ref()
         .ok_or(CampaignError::MissingReplay("corrupt-oods-sample"))?;
-    if mutated.report.case_id != "corrupt-oods-sample"
+    if mutated.request != expected_mutated_request
+        || mutated.report.case_id != "corrupt-oods-sample"
+        || !mutated.report.worker_args.is_empty()
+        || mutated.report.timeout_ms != 30_000
         || mutated_replay.verdict != DifferentialVerdict::MutationRejected
     {
-        return Err(CampaignError::WrongRecordedVerdict("corrupt-oods-sample"));
+        return Err(CampaignError::WrongRecordedCase("corrupt-oods-sample"));
     }
 
-    for (path, case_id, verdict) in [
+    let witness_adapter = StwoWitnessAdapter::new()?;
+    let expected_preserving = witness_adapter.increment_all_rows_operations();
+    let expected_violating = vec![witness_adapter.increment_one_row_operation(0)?];
+    for (path, case_id, case_kind, verdict, expected_operations) in [
         (
             WITNESS_HONEST_FILE,
             "honest-witness",
+            CaseKind::Honest,
             WitnessVerdict::HonestAccepted,
+            None,
         ),
         (
             WITNESS_PRESERVING_FILE,
             "constant-one-witness",
+            CaseKind::Mutated,
             WitnessVerdict::ConstraintPreservingAccepted,
+            Some(expected_preserving),
         ),
         (
             WITNESS_VIOLATING_FILE,
             "single-cell-violation",
+            CaseKind::Mutated,
             WitnessVerdict::ConstraintViolationRejected,
+            Some(expected_violating),
         ),
     ] {
         let replay = read_verified_witness_replay(&root.join(path))?;
-        if replay.report.case_id != case_id || replay.report.verdict != verdict {
-            return Err(CampaignError::WrongRecordedVerdict(path));
+        let actual_operations = replay
+            .observation
+            .mutation
+            .as_ref()
+            .map(|plan| plan.operations.as_slice());
+        if replay.report.case_id != case_id
+            || replay.report.verdict != verdict
+            || replay.observation.case_kind != case_kind
+            || actual_operations != expected_operations.as_deref()
+        {
+            return Err(CampaignError::WrongRecordedCase(path));
         }
     }
     Ok(())
@@ -389,7 +424,7 @@ fn fresh_boundary_replay(root: &Path, worker: &Path) -> Result<(), CampaignError
     for bundle in [HONEST_BUNDLE, MUTATED_BUNDLE] {
         let recorded = read_verified_replay_bundle(&root.join(bundle))?;
         if !recorded.report.is_expected() {
-            return Err(CampaignError::WrongRecordedVerdict(bundle));
+            return Err(CampaignError::WrongRecordedCase(bundle));
         }
         let replayed = run_isolated_replay(
             worker,
@@ -846,6 +881,9 @@ pub enum CampaignError {
     /// Witness replay validation or execution failed.
     #[error(transparent)]
     Witness(#[from] StwoWitnessError),
+    /// Boundary-adapter discovery failed.
+    #[error(transparent)]
+    Boundary(#[from] StwoBoundaryError),
     /// Existing path is not a real directory.
     #[error("campaign root is not a real directory: {}", .0.display())]
     NotDirectory(PathBuf),
@@ -910,9 +948,9 @@ pub enum CampaignError {
     /// A mutated witness record has no mutation plan.
     #[error("campaign witness artifact `{0}` has no mutation plan")]
     MissingMutation(&'static str),
-    /// A recorded verdict differs from the frozen case contract.
-    #[error("campaign artifact `{0}` has the wrong recorded verdict")]
-    WrongRecordedVerdict(&'static str),
+    /// A recorded request, mutation plan, execution policy, or verdict differs from the contract.
+    #[error("campaign artifact `{0}` differs from the frozen case contract")]
+    WrongRecordedCase(&'static str),
     /// Fresh execution differs from the sealed record.
     #[error("fresh replay differs from sealed artifact `{0}`")]
     FreshReplayMismatch(&'static str),

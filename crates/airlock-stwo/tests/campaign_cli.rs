@@ -4,7 +4,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use airlock_stwo::CampaignManifest;
+use airlock_boundary::WitnessVerdict;
+use airlock_stwo::{CampaignManifest, StwoWitnessAdapter, write_witness_replay};
 use sha2::{Digest, Sha256};
 
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -143,6 +144,17 @@ fn write_manifest(root: &Path, manifest: &CampaignManifest) {
     bytes.push(b'\n');
     fs::write(root.join("campaign.json"), bytes).expect("write changed campaign manifest");
     rewrite_top_checksums(root);
+}
+
+fn refresh_payload_record(root: &Path, manifest: &mut CampaignManifest, path: &str) {
+    let bytes = fs::read(root.join(path)).expect("read changed payload");
+    let record = manifest
+        .payload_files
+        .iter_mut()
+        .find(|record| record.path == path)
+        .expect("payload record");
+    record.sha256 = format!("{:x}", Sha256::digest(&bytes));
+    record.size_bytes = bytes.len() as u64;
 }
 
 fn rewrite_top_checksums(root: &Path) {
@@ -292,6 +304,38 @@ fn campaign_rejects_self_consistent_wrong_source_and_verdict() {
     let output = verify(&wrong_verdict);
     assert!(!output.status.success());
     assert!(stderr(&output).contains("case inventory differs"));
+
+    fs::remove_dir_all(parent).expect("remove campaign test directory");
+}
+
+#[test]
+fn campaign_rejects_a_self_consistently_rehashed_alternate_mutation_plan() {
+    let parent = temp_parent("alternate-plan");
+    let root = build_sealed_campaign(&parent);
+    let adapter = StwoWitnessAdapter::new().expect("build witness adapter");
+    let mut alternate_operations = adapter.increment_all_rows_operations();
+    alternate_operations.reverse();
+    let alternate = adapter
+        .replay_mutation("constant-one-witness", alternate_operations)
+        .expect("replay alternate preserving mutation");
+    assert_eq!(
+        alternate.report.verdict,
+        WitnessVerdict::ConstraintPreservingAccepted
+    );
+
+    let artifact = root.join("witness-preserving.json");
+    fs::remove_file(&artifact).expect("remove original preserving artifact");
+    write_witness_replay(&artifact, &alternate).expect("write alternate preserving artifact");
+
+    let mut manifest: CampaignManifest =
+        serde_json::from_slice(&fs::read(root.join("campaign.json")).expect("read manifest"))
+            .expect("parse manifest");
+    refresh_payload_record(&root, &mut manifest, "witness-preserving.json");
+    write_manifest(&root, &manifest);
+
+    let output = verify(&root);
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("differs from the frozen case contract"));
 
     fs::remove_dir_all(parent).expect("remove campaign test directory");
 }
