@@ -57,8 +57,12 @@ claim.
   dirty or agent-owned checkout; create a worktree instead.
 - Do not push directly to `main`. Use a focused, non-draft pull request unless
   the repository owner explicitly asks otherwise.
-- Do not edit sibling Stwo or other upstream or downstream repositories from an
-  AIRLock task. Pin and report their exact commits instead.
+- Do not directly edit sibling Stwo or other upstream or downstream
+  repositories from an AIRLock task. The sole bootstrap exception is
+  `scripts/setup-stwo.sh`: it may create a missing `../stwo` from the exact
+  checked pin and patch, but it refuses to replace an existing checkout and
+  verifies the result before installing it. Change that pin, patch, or setup
+  flow in an AIRLock PR rather than modifying the installed sibling checkout.
 - Never add secrets, customer data, private proof material, embargoed findings,
   or production exploit details. Follow `SECURITY.md` for disclosure.
 - Prefer generic invariants over named-attack checks. Seeded fixtures prove

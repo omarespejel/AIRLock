@@ -109,10 +109,11 @@ class, never the matched text.
 ## Verify again
 
 ```bash
-target/debug/airlock-stwo-demo verify-campaign \
+TARGET_DIR="${CARGO_TARGET_DIR:-target}"
+"$TARGET_DIR/debug/airlock-stwo-demo" verify-campaign \
   --root /tmp/airlock-demo \
   --expected-airlock-commit "$(git rev-parse HEAD)" \
-  --worker target/debug/airlock-stwo-worker
+  --worker "$TARGET_DIR/debug/airlock-stwo-worker"
 ```
 
 Expected status:
@@ -127,10 +128,10 @@ checked file, and rerun verification:
 ```bash
 cp -R /tmp/airlock-demo /tmp/airlock-demo-tampered
 printf '\nchanged\n' >> /tmp/airlock-demo-tampered/SUMMARY.md
-target/debug/airlock-stwo-demo verify-campaign \
+"$TARGET_DIR/debug/airlock-stwo-demo" verify-campaign \
   --root /tmp/airlock-demo-tampered \
   --expected-airlock-commit "$(git rev-parse HEAD)" \
-  --worker target/debug/airlock-stwo-worker
+  --worker "$TARGET_DIR/debug/airlock-stwo-worker"
 ```
 
 The command must fail with a checksum mismatch before fresh execution.
@@ -146,8 +147,15 @@ The command must fail with a checksum mismatch before fresh execution.
 
 ## Not established
 
-- statement binding;
-- executable transcript, Fiat-Shamir, or FRI assurance;
-- broad Stwo or production-integration coverage;
-- producer identity, machine attestation, or trusted time;
-- a cryptographic soundness theorem or absence of other defects.
+`AIRLOCK_DEMO_COMPLETE` means only that this packaged workflow finished. The
+four assurance lanes remain separate:
+
+| Lane | Demo status |
+| --- | --- |
+| AIR relation | Executable witness checks for the two exact targets only; broad AIR coverage is not established. |
+| Statement binding | Unsupported. |
+| Protocol, transcript, and FRI | Unsupported. |
+| Evidence and provenance | Local checksum and replay-bundle consistency are checked; producer identity, machine attestation, trusted time, and broad provenance are unsupported. |
+
+The demo also does not establish broad Stwo or production-integration
+coverage, a cryptographic soundness theorem, or the absence of other defects.

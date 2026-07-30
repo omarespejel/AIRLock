@@ -34,35 +34,39 @@ scripts/setup-stwo.sh
 
 scripts/verify-local.sh
 
-cargo +nightly-2026-01-15 test -p airlock-stwo --locked
+cargo +nightly-2026-01-15 test -p airlock-stwo --locked --offline
 
 # Exporter-faithfulness differential against Stwo's concrete evaluators.
 cargo +nightly-2026-01-15 test -p airlock-export \
-  --test assert_evaluator_faithfulness --locked
+  --test assert_evaluator_faithfulness --locked --offline
 
 # Build, run, package, and freshly verify the complete offline demo.
 scripts/demo-airlock.sh /tmp/airlock-demo
 
 # Recheck a campaign against its source commit and the pinned worker.
-cargo +nightly-2026-01-15 run -p airlock-stwo --bin airlock-stwo-demo -- \
+TARGET_DIR="${CARGO_TARGET_DIR:-target}"
+cargo +nightly-2026-01-15 run --locked --offline \
+  -p airlock-stwo --bin airlock-stwo-demo -- \
   verify-campaign \
   --root /tmp/airlock-demo \
   --expected-airlock-commit "$(git rev-parse HEAD)" \
-  --worker target/debug/airlock-stwo-worker
+  --worker "$TARGET_DIR/debug/airlock-stwo-worker"
 
 # Direct phase-bound witness campaigns are also exposed by the demo binary.
-cargo +nightly-2026-01-15 run -p airlock-stwo --bin airlock-stwo-demo -- \
+cargo +nightly-2026-01-15 run --locked --offline \
+  -p airlock-stwo --bin airlock-stwo-demo -- \
   witness-preserving
 
 # The held-out target uses Stwo's real WideFibonacciEval<3>.
-cargo +nightly-2026-01-15 run -p airlock-stwo --bin airlock-stwo-demo -- \
+cargo +nightly-2026-01-15 run --locked --offline \
+  -p airlock-stwo --bin airlock-stwo-demo -- \
   held-out-preserving
 
-cargo +nightly-2026-01-15 run -p airlock-cli -- air \
+cargo +nightly-2026-01-15 run --locked --offline -p airlock-cli -- air \
   --manifest fixtures/seeded/q8_padded_table_vulnerable.json
 # expects StaticFail (exit 1)
 
-cargo +nightly-2026-01-15 run -p airlock-cli -- air \
+cargo +nightly-2026-01-15 run --locked --offline -p airlock-cli -- air \
   --manifest fixtures/seeded/q8_padded_table_fixed.json
 # expects StaticPass (exit 0); overall release stays BLOCKED
 ```
