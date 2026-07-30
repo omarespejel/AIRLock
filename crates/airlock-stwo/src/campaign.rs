@@ -48,7 +48,17 @@ const MAX_REGRESSION_BYTES: u64 = 1 << 20;
 const MAX_CHECKSUM_BYTES: u64 = 16 << 10;
 const CANONICAL_COVERAGE: &[u8] = include_bytes!("../../../docs/coverage.yaml");
 
-const LOCAL_PATH_MARKERS: &[&str] = &["/users/", "/home/", "c:\\users\\", "file://"];
+const LOCAL_PATH_MARKERS: &[&str] = &[
+    "/users/",
+    "/home/",
+    "/private/var/folders/",
+    "/var/folders/",
+    "/volumes/",
+    "/tmp/",
+    ":\\users\\",
+    ":/users/",
+    "file://",
+];
 const CREDENTIAL_MARKERS: &[&str] = &[
     "github_pat_",
     "ghp_",
@@ -1003,6 +1013,7 @@ fn validate_external_artifact_text(
         let text =
             std::str::from_utf8(bytes).map_err(|_| CampaignError::NonTextArtifact(path.clone()))?;
         let normalized = text.to_ascii_lowercase();
+        let collapsed_backslashes = collapse_backslash_runs(&normalized);
         for (category, markers) in [
             ("local absolute path", LOCAL_PATH_MARKERS),
             ("credential material", CREDENTIAL_MARKERS),
@@ -1012,7 +1023,10 @@ fn validate_external_artifact_text(
                 INTERNAL_NARRATIVE_MARKERS,
             ),
         ] {
-            if markers.iter().any(|marker| normalized.contains(marker)) {
+            if markers
+                .iter()
+                .any(|marker| normalized.contains(marker) || collapsed_backslashes.contains(marker))
+            {
                 return Err(CampaignError::ForbiddenExternalContent {
                     path: path.clone(),
                     category,
@@ -1021,6 +1035,23 @@ fn validate_external_artifact_text(
         }
     }
     Ok(())
+}
+
+fn collapse_backslash_runs(text: &str) -> String {
+    let mut collapsed = String::with_capacity(text.len());
+    let mut previous_was_backslash = false;
+    for character in text.chars() {
+        if character == '\\' {
+            if !previous_was_backslash {
+                collapsed.push(character);
+            }
+            previous_was_backslash = true;
+        } else {
+            collapsed.push(character);
+            previous_was_backslash = false;
+        }
+    }
+    collapsed
 }
 
 fn summary_document(airlock_commit: &str, replay_worker_sha256: &str) -> String {
@@ -1379,6 +1410,10 @@ mod tests {
         for (text, expected_category) in [
             (
                 b"Built under /Users/example/AIRLock\n".as_slice(),
+                "local absolute path",
+            ),
+            (
+                br#"{"path":"D:\\Users\\Alice\\demo"}"#.as_slice(),
                 "local absolute path",
             ),
             (
