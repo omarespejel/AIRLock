@@ -202,7 +202,10 @@ digests. A generated proof must carry its digest and a verifier outcome; a
 prover rejection must not claim that the verifier ran. A relation-violating
 campaign is expected only when the adapter assigns the typed
 `constraint_violation` cause to a prover rejection. Unrelated prover rejection
-or an unattributed verifier rejection remains non-green.
+or an unattributed verifier rejection remains non-green. Prover rejection,
+verifier rejection, and infrastructure-failure kinds use the same canonical
+machine-readable syntax. Infrastructure reports retain that kind as structured
+data; consumers do not need to infer it from diagnostic prose.
 
 `StwoWitnessAdapter` instantiates this contract for the pinned transition demo.
 It exports the same `FrameworkEval` to AuditIR, discovers its sole original

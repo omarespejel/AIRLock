@@ -255,6 +255,13 @@ impl WitnessObservation {
                 kind.clone(),
             ));
         }
+        if let ProofGenerationOutcome::InfrastructureFailure { kind, .. } = &self.proof_generation
+            && !is_valid_rejection_kind(kind)
+        {
+            return Err(WitnessContractError::InvalidInfrastructureFailureKind(
+                kind.clone(),
+            ));
+        }
         if let Some(VerificationOutcome::Rejected { kind, .. }) = &self.verifier
             && !is_valid_rejection_kind(kind)
         {
@@ -294,6 +301,9 @@ pub enum WitnessFindingCode {
 pub struct WitnessFinding {
     /// Stable finding category.
     pub code: WitnessFindingCode,
+    /// Adapter-supplied machine-readable subcategory, when the source has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
     /// Human-readable diagnostic.
     pub message: String,
 }
@@ -428,10 +438,11 @@ fn exceptional_verdict(observation: &WitnessObservation) -> Option<WitnessReport
     // alternatives below therefore classify generated proofs; adapters must not
     // attach a captured verifier result to any other proof-generation outcome.
     match (&observation.proof_generation, &observation.verifier) {
-        (ProofGenerationOutcome::InfrastructureFailure { message, .. }, _) => Some(report(
+        (ProofGenerationOutcome::InfrastructureFailure { kind, message }, _) => Some(typed_report(
             observation,
             WitnessVerdict::InfrastructureFailure,
             WitnessFindingCode::InfrastructureFailure,
+            kind.clone(),
             message.clone(),
         )),
         (ProofGenerationOutcome::Panicked { message }, _)
@@ -477,7 +488,29 @@ fn report(
     WitnessReport {
         case_id: observation.case_id.clone(),
         verdict,
-        findings: vec![WitnessFinding { code, message }],
+        findings: vec![WitnessFinding {
+            code,
+            kind: None,
+            message,
+        }],
+    }
+}
+
+fn typed_report(
+    observation: &WitnessObservation,
+    verdict: WitnessVerdict,
+    code: WitnessFindingCode,
+    kind: String,
+    message: String,
+) -> WitnessReport {
+    WitnessReport {
+        case_id: observation.case_id.clone(),
+        verdict,
+        findings: vec![WitnessFinding {
+            code,
+            kind: Some(kind),
+            message,
+        }],
     }
 }
 
@@ -544,6 +577,9 @@ pub enum WitnessContractError {
     /// Prover rejection category is not canonical.
     #[error("invalid proof-generation rejection kind `{0}`")]
     InvalidProofRejectionKind(String),
+    /// Infrastructure failure category is not canonical.
+    #[error("invalid infrastructure failure kind `{0}`")]
+    InvalidInfrastructureFailureKind(String),
     /// Verifier rejection category is not canonical.
     #[error("invalid verifier rejection kind `{0}`")]
     InvalidVerifierRejectionKind(String),
@@ -748,6 +784,10 @@ mod tests {
             infrastructure_failure.verdict,
             WitnessVerdict::InfrastructureFailure
         );
+        assert_eq!(
+            infrastructure_failure.findings[0].kind.as_deref(),
+            Some("prover")
+        );
         assert!(!infrastructure_failure.verdict.is_expected());
 
         let unexpected_verifier = evaluate_witness(&observation(
@@ -813,6 +853,56 @@ mod tests {
             verifier_report.findings[0].code,
             WitnessFindingCode::InvalidWitnessContract
         );
+
+        let malformed_infrastructure = observation(
+            CaseKind::Mutated,
+            false,
+            ProofGenerationOutcome::InfrastructureFailure {
+                kind: " invalid category ".to_owned(),
+                message: "infrastructure failed".to_owned(),
+            },
+            None,
+        );
+        assert!(matches!(
+            malformed_infrastructure.validate(),
+            Err(WitnessContractError::InvalidInfrastructureFailureKind(_))
+        ));
+        let infrastructure_report = evaluate_witness(&malformed_infrastructure);
+        assert_eq!(infrastructure_report.verdict, WitnessVerdict::Unsupported);
+        assert_eq!(
+            infrastructure_report.findings[0].code,
+            WitnessFindingCode::InvalidWitnessContract
+        );
+        assert_eq!(infrastructure_report.findings[0].kind, None);
+    }
+
+    #[test]
+    fn infrastructure_failure_kind_remains_machine_readable() {
+        let prover = evaluate_witness(&observation(
+            CaseKind::Mutated,
+            false,
+            ProofGenerationOutcome::InfrastructureFailure {
+                kind: "prover".to_owned(),
+                message: "prover failed".to_owned(),
+            },
+            None,
+        ));
+        let witness = evaluate_witness(&observation(
+            CaseKind::Mutated,
+            false,
+            ProofGenerationOutcome::InfrastructureFailure {
+                kind: "invalid_witness_length".to_owned(),
+                message: "witness length was invalid".to_owned(),
+            },
+            None,
+        ));
+
+        assert_eq!(prover.findings[0].kind.as_deref(), Some("prover"));
+        assert_eq!(
+            witness.findings[0].kind.as_deref(),
+            Some("invalid_witness_length")
+        );
+        assert_ne!(prover.findings, witness.findings);
     }
 
     #[test]
