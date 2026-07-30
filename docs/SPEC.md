@@ -264,10 +264,11 @@ The Stwo demo can persist complete typed witness replays and seal the fixed
 transition-demo inventory into `campaign.json`, `SUMMARY.md`, a byte-for-byte
 coverage snapshot, and top-level `SHA256SUMS`. The manifest binds a
 caller-pinned 40-character AIRLock Git commit, the exact Stwo source identity,
-five case identities and verdicts, fixed non-claims, and every payload digest
-and size. Verification enforces a strict root and nested inventory, reads every
-file through a predeclared bound without following symbolic links, recomputes
-all reports and digests, reconstructs the generated regression, and reruns both
+the SHA-256 of the exact replay worker shared by both boundary cases, five case
+identities and verdicts, fixed non-claims, and every payload digest and size.
+Verification enforces a strict root and nested inventory, reads every file
+through a predeclared bound without following symbolic links, recomputes all
+reports and digests, reconstructs the generated regression, and reruns both
 boundary cases and all three witness cases.
 
 The summary and manifest are deterministic for identical executions. They

@@ -102,6 +102,8 @@ pub struct CampaignManifest {
     pub airlock_commit: String,
     /// Exact pinned Stwo source identity.
     pub stwo_source_id: String,
+    /// SHA-256 of the exact isolated replay worker used by both boundary cases.
+    pub replay_worker_sha256: String,
     /// Frozen executable case inventory.
     pub cases: Vec<CampaignCase>,
     /// Fixed non-claims shown beside successful executions.
@@ -127,6 +129,11 @@ impl CampaignManifest {
         }
         if self.stwo_source_id != STWO_SOURCE_ID {
             return Err(CampaignError::WrongStwoSource(self.stwo_source_id.clone()));
+        }
+        if !is_sha256(&self.replay_worker_sha256) {
+            return Err(CampaignError::InvalidWorkerDigest(
+                self.replay_worker_sha256.clone(),
+            ));
         }
         if self.cases != expected_cases() {
             return Err(CampaignError::WrongCaseInventory);
@@ -194,10 +201,11 @@ pub fn seal_campaign(
     inspect_unsealed_root(root)?;
     validate_boundary_and_witness_artifacts(root)?;
     validate_regression(root)?;
+    let replay_worker_sha256 = recorded_worker_sha256(root)?;
 
     let coverage = read_bounded(coverage_source, "coverage source", MAX_COVERAGE_BYTES)?;
     validate_coverage(&coverage)?;
-    let summary = summary_document(airlock_commit);
+    let summary = summary_document(airlock_commit, &replay_worker_sha256);
 
     let outputs = [
         root.join(COVERAGE_FILE),
@@ -218,6 +226,7 @@ pub fn seal_campaign(
             schema_version: CAMPAIGN_SCHEMA_VERSION.to_owned(),
             airlock_commit: airlock_commit.to_owned(),
             stwo_source_id: STWO_SOURCE_ID.to_owned(),
+            replay_worker_sha256,
             cases: expected_cases(),
             non_claims: expected_non_claims(),
             payload_files,
@@ -302,12 +311,17 @@ fn read_campaign(
     let manifest: CampaignManifest = serde_json::from_slice(&manifest_bytes)
         .map_err(|error| CampaignError::MalformedArtifact(error.to_string()))?;
     manifest.validate(expected_airlock_commit)?;
+    if manifest.replay_worker_sha256 != recorded_worker_sha256(root)? {
+        return Err(CampaignError::WorkerDigestMismatch);
+    }
     if manifest.payload_files != payload_records(root)? {
         return Err(CampaignError::PayloadDigestMismatch);
     }
 
     let summary = read_bounded(&root.join(SUMMARY_FILE), SUMMARY_FILE, MAX_SUMMARY_BYTES)?;
-    if summary != summary_document(expected_airlock_commit).as_bytes() {
+    if summary
+        != summary_document(expected_airlock_commit, &manifest.replay_worker_sha256).as_bytes()
+    {
         return Err(CampaignError::SummaryMismatch);
     }
     let coverage = read_bounded(&root.join(COVERAGE_FILE), COVERAGE_FILE, MAX_COVERAGE_BYTES)?;
@@ -388,6 +402,19 @@ fn fresh_boundary_replay(root: &Path, worker: &Path) -> Result<(), CampaignError
         }
     }
     Ok(())
+}
+
+fn recorded_worker_sha256(root: &Path) -> Result<String, CampaignError> {
+    let honest = read_verified_replay_bundle(&root.join(HONEST_BUNDLE))?
+        .report
+        .worker_sha256;
+    let mutated = read_verified_replay_bundle(&root.join(MUTATED_BUNDLE))?
+        .report
+        .worker_sha256;
+    if honest != mutated || !is_sha256(&honest) {
+        return Err(CampaignError::WorkerDigestMismatch);
+    }
+    Ok(honest)
 }
 
 fn fresh_witness_replay(root: &Path) -> Result<(), CampaignError> {
@@ -630,11 +657,12 @@ fn expected_non_claims() -> Vec<String> {
     NON_CLAIMS.into_iter().map(str::to_owned).collect()
 }
 
-fn summary_document(airlock_commit: &str) -> String {
+fn summary_document(airlock_commit: &str, replay_worker_sha256: &str) -> String {
     format!(
         "# AIRLock Stwo Campaign\n\n\
 Source: `{airlock_commit}`\n\n\
 Pinned Stwo: `{STWO_SOURCE_ID}`\n\n\
+Replay worker: `{replay_worker_sha256}`\n\n\
 ## Executed\n\n\
 - Honest real proof through raw PCS and framework verification.\n\
 - Generic OODS scalar corruption rejected at both verifier layers.\n\
@@ -849,6 +877,12 @@ pub enum CampaignError {
     /// Manifest is not bound to the pinned Stwo source.
     #[error("campaign has unexpected Stwo source `{0}`")]
     WrongStwoSource(String),
+    /// Manifest worker digest is malformed.
+    #[error("campaign has invalid replay-worker digest `{0}`")]
+    InvalidWorkerDigest(String),
+    /// Boundary records or manifest disagree on the exact worker bytes.
+    #[error("campaign boundary records do not share the manifest replay-worker digest")]
+    WorkerDigestMismatch,
     /// Executable case inventory differs from the frozen contract.
     #[error("campaign case inventory differs from the frozen contract")]
     WrongCaseInventory,
