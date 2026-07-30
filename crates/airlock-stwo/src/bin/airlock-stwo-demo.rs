@@ -5,7 +5,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use airlock_boundary::{MutationOperation, ScalarMutation};
+use airlock_boundary::{MutationOperation, ScalarMutation, WitnessVerdict};
 use airlock_stwo::{
     HeldOutAdapter, ReplayRequest, StwoBoundaryAdapter, StwoWitnessAdapter,
     generate_regression_source, read_verified_replay_bundle, run_isolated_replay, seal_campaign,
@@ -198,6 +198,16 @@ enum WitnessDemoCase {
     Violating,
 }
 
+impl WitnessDemoCase {
+    const fn expected_verdict(self) -> WitnessVerdict {
+        match self {
+            Self::Honest => WitnessVerdict::HonestAccepted,
+            Self::Preserving => WitnessVerdict::ConstraintPreservingAccepted,
+            Self::Violating => WitnessVerdict::ConstraintViolationRejected,
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 enum HeldOutDemoCase {
     Honest,
@@ -205,8 +215,19 @@ enum HeldOutDemoCase {
     Violating,
 }
 
+impl HeldOutDemoCase {
+    const fn expected_verdict(self) -> WitnessVerdict {
+        match self {
+            Self::Honest => WitnessVerdict::HonestAccepted,
+            Self::Preserving => WitnessVerdict::ConstraintPreservingAccepted,
+            Self::Violating => WitnessVerdict::ConstraintViolationRejected,
+        }
+    }
+}
+
 fn run_witness_case(case: WitnessDemoCase, args: WitnessArgs) -> Result<()> {
     let adapter = StwoWitnessAdapter::new().context("build pinned witness adapter")?;
+    let expected_verdict = case.expected_verdict();
     let replay = match case {
         WitnessDemoCase::Honest => adapter.replay_honest(),
         WitnessDemoCase::Preserving => adapter.replay_mutation(
@@ -219,10 +240,10 @@ fn run_witness_case(case: WitnessDemoCase, args: WitnessArgs) -> Result<()> {
         ),
     }
     .context("run phase-bound witness replay")?;
-    if !replay.report.verdict.is_expected() {
+    if replay.report.verdict != expected_verdict {
         bail!(
-            "witness replay is internally consistent but produced unexpected verdict {:?}",
-            replay.report.verdict
+            "witness replay produced verdict {:?}; requested case requires {expected_verdict:?}",
+            replay.report.verdict,
         );
     }
     let artifact_sha256 = args
@@ -252,16 +273,17 @@ fn run_witness_case(case: WitnessDemoCase, args: WitnessArgs) -> Result<()> {
 
 fn run_held_out_case(case: HeldOutDemoCase, args: WitnessArgs) -> Result<()> {
     let adapter = HeldOutAdapter::new().context("build upstream held-out adapter")?;
+    let expected_verdict = case.expected_verdict();
     let replay = match case {
         HeldOutDemoCase::Honest => adapter.replay_honest(),
         HeldOutDemoCase::Preserving => adapter.replay_preserving(),
         HeldOutDemoCase::Violating => adapter.replay_violating(),
     }
     .context("run held-out witness replay")?;
-    if !replay.report.verdict.is_expected() {
+    if replay.report.verdict != expected_verdict {
         bail!(
-            "held-out replay is internally consistent but produced unexpected verdict {:?}",
-            replay.report.verdict
+            "held-out replay produced verdict {:?}; requested case requires {expected_verdict:?}",
+            replay.report.verdict,
         );
     }
     let artifact_sha256 = args
@@ -381,4 +403,38 @@ fn write_new(path: &Path, bytes: &[u8]) -> Result<()> {
     file.write_all(bytes)
         .and_then(|()| file.sync_all())
         .with_context(|| format!("write {}", path.display()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{HeldOutDemoCase, WitnessDemoCase};
+    use airlock_boundary::WitnessVerdict;
+
+    #[test]
+    fn demo_cases_require_exact_verdicts() {
+        assert_eq!(
+            WitnessDemoCase::Honest.expected_verdict(),
+            WitnessVerdict::HonestAccepted
+        );
+        assert_eq!(
+            WitnessDemoCase::Preserving.expected_verdict(),
+            WitnessVerdict::ConstraintPreservingAccepted
+        );
+        assert_eq!(
+            WitnessDemoCase::Violating.expected_verdict(),
+            WitnessVerdict::ConstraintViolationRejected
+        );
+        assert_eq!(
+            HeldOutDemoCase::Honest.expected_verdict(),
+            WitnessVerdict::HonestAccepted
+        );
+        assert_eq!(
+            HeldOutDemoCase::Preserving.expected_verdict(),
+            WitnessVerdict::ConstraintPreservingAccepted
+        );
+        assert_eq!(
+            HeldOutDemoCase::Violating.expected_verdict(),
+            WitnessVerdict::ConstraintViolationRejected
+        );
+    }
 }
