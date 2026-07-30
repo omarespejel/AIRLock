@@ -195,6 +195,38 @@ pub fn run_isolated_replay(
     request: &ReplayRequest,
     timeout: Duration,
 ) -> Result<IsolatedReplayRecord, IsolatedReplayError> {
+    run_isolated_replay_inner(program, worker_args, request, timeout, None)
+}
+
+/// Run a replay only when the private worker copy matches a pinned digest.
+///
+/// The digest check happens after copying the executable into the private
+/// directory and before spawning it, closing both substitution and path-race
+/// windows at the execution boundary.
+pub fn run_isolated_replay_with_worker_digest(
+    program: &Path,
+    worker_args: &[String],
+    request: &ReplayRequest,
+    timeout: Duration,
+    expected_worker_sha256: &str,
+) -> Result<IsolatedReplayRecord, IsolatedReplayError> {
+    validate_hex_digest(expected_worker_sha256, "expected worker")?;
+    run_isolated_replay_inner(
+        program,
+        worker_args,
+        request,
+        timeout,
+        Some(expected_worker_sha256),
+    )
+}
+
+fn run_isolated_replay_inner(
+    program: &Path,
+    worker_args: &[String],
+    request: &ReplayRequest,
+    timeout: Duration,
+    expected_worker_sha256: Option<&str>,
+) -> Result<IsolatedReplayRecord, IsolatedReplayError> {
     request.validate()?;
     if timeout.is_zero() || timeout > MAX_TIMEOUT {
         return Err(IsolatedReplayError::InvalidTimeout(timeout));
@@ -218,6 +250,9 @@ pub fn run_isolated_replay(
         ))
     })?;
     let worker_sha256 = sha256_file(&copied_worker)?;
+    if expected_worker_sha256.is_some_and(|expected| expected != worker_sha256) {
+        return Err(IsolatedReplayError::WorkerDigestMismatch);
+    }
 
     let mut child = Command::new(&copied_worker)
         .args(worker_args)
@@ -491,6 +526,9 @@ pub enum IsolatedReplayError {
     /// Worker executable could not be hashed.
     #[error("could not identify worker executable: {0}")]
     WorkerIdentity(String),
+    /// Private worker copy does not match the caller-pinned executable digest.
+    #[error("isolated replay worker digest does not match the expected digest")]
+    WorkerDigestMismatch,
     /// Worker argument vector exceeds the deterministic process contract.
     #[error("invalid isolated replay worker arguments")]
     InvalidWorkerArguments,

@@ -9,6 +9,7 @@
 //! It does not establish Stwo, FRI, Fiat--Shamir, or application soundness.
 
 mod adapter;
+mod campaign;
 mod fixture;
 mod isolation;
 mod mutation;
@@ -21,9 +22,15 @@ mod witness;
 pub use adapter::{
     DifferentialReplay, DifferentialVerdict, LayerReplay, StwoBoundaryAdapter, StwoBoundaryError,
 };
+pub use campaign::{
+    CAMPAIGN_SCHEMA_ID, CAMPAIGN_SCHEMA_VERSION, CampaignCase, CampaignError, CampaignFile,
+    CampaignManifest, VerifiedCampaign, read_verified_witness_replay, seal_campaign,
+    verify_campaign, write_witness_replay,
+};
 pub use fixture::{DemoComponent, DemoProof, build_demo_fixture};
 pub use isolation::{
     IsolatedReplayError, IsolatedReplayRecord, ProcessTermination, run_isolated_replay,
+    run_isolated_replay_with_worker_digest,
 };
 pub use mutation::{MutatedProof, StwoMutationError, mutate_proof, proof_sha256};
 pub use regression::generate_regression_source;

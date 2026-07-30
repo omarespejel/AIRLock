@@ -258,6 +258,26 @@ replay record but cannot pass the demo or release gate. Generated regressions
 must not contain the local repository path and are compiled and executed in a
 temporary offline Cargo project.
 
+## Fixed campaign artifacts
+
+The Stwo demo can persist complete typed witness replays and seal the fixed
+transition-demo inventory into `campaign.json`, `SUMMARY.md`, a byte-for-byte
+coverage snapshot, and top-level `SHA256SUMS`. The manifest binds a
+caller-pinned 40-character AIRLock Git commit, the exact Stwo source identity,
+the SHA-256 of the exact replay worker shared by both boundary cases, five case
+identities and verdicts, fixed non-claims, and every payload digest and size.
+Verification enforces a strict root and nested inventory, reads every file
+through a predeclared bound without following symbolic links, recomputes all
+reports and digests, reconstructs the generated regression, and reruns both
+boundary cases and all three witness cases.
+
+The summary and manifest are deterministic for identical executions. They
+contain no timestamps or local paths. The source commit remains a
+caller-supplied pin; the unsigned campaign does not prove authorship, trusted
+publication time, machine identity, broad Stwo coverage, or cryptographic
+soundness. Statement binding and executable transcript, Fiat--Shamir, and FRI
+assurance remain unsupported and appear beside the successful cases.
+
 ## Seeded defects
 
 1. Q8 padded `(0,0)` table with free multiplicity — must fail.

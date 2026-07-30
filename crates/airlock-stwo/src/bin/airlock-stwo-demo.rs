@@ -8,7 +8,8 @@ use std::time::Duration;
 use airlock_boundary::{MutationOperation, ScalarMutation};
 use airlock_stwo::{
     ReplayRequest, StwoBoundaryAdapter, StwoWitnessAdapter, generate_regression_source,
-    read_verified_replay_bundle, run_isolated_replay, write_replay_bundle,
+    read_verified_replay_bundle, run_isolated_replay, seal_campaign, verify_campaign,
+    write_replay_bundle, write_witness_replay,
 };
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
@@ -50,11 +51,35 @@ enum Command {
         output: PathBuf,
     },
     /// Evaluate, prove, and verify the unmodified pre-commitment witness.
-    WitnessHonest,
+    WitnessHonest(WitnessArgs),
     /// Mutate every original-trace row while preserving the exported relation.
-    WitnessPreserving,
+    WitnessPreserving(WitnessArgs),
     /// Mutate one original-trace row and require relation rejection.
-    WitnessViolating,
+    WitnessViolating(WitnessArgs),
+    /// Seal the fixed campaign inventory with a source-bound manifest.
+    SealCampaign {
+        /// Existing campaign root containing only the executed payload files.
+        #[arg(long)]
+        root: PathBuf,
+        /// Exact reviewed AIRLock Git commit.
+        #[arg(long)]
+        airlock_commit: String,
+        /// Repository coverage manifest to snapshot.
+        #[arg(long)]
+        coverage: PathBuf,
+    },
+    /// Verify the sealed campaign and freshly replay every executable case.
+    VerifyCampaign {
+        /// Sealed campaign root.
+        #[arg(long)]
+        root: PathBuf,
+        /// Caller-pinned AIRLock Git commit expected in the manifest.
+        #[arg(long)]
+        expected_airlock_commit: String,
+        /// Exact replay-worker executable. Defaults to a sibling binary.
+        #[arg(long)]
+        worker: Option<PathBuf>,
+    },
 }
 
 #[derive(Debug, Args)]
@@ -68,6 +93,13 @@ struct RunArgs {
     /// Parent-owned worker deadline in seconds.
     #[arg(long, default_value_t = 30)]
     timeout_seconds: u64,
+}
+
+#[derive(Debug, Args)]
+struct WitnessArgs {
+    /// New file receiving the complete typed replay; existing files are never overwritten.
+    #[arg(long)]
+    output: Option<PathBuf>,
 }
 
 fn main() -> Result<()> {
@@ -107,9 +139,46 @@ fn main() -> Result<()> {
             );
             Ok(())
         }
-        Command::WitnessHonest => run_witness_case(WitnessDemoCase::Honest),
-        Command::WitnessPreserving => run_witness_case(WitnessDemoCase::Preserving),
-        Command::WitnessViolating => run_witness_case(WitnessDemoCase::Violating),
+        Command::WitnessHonest(args) => run_witness_case(WitnessDemoCase::Honest, args),
+        Command::WitnessPreserving(args) => run_witness_case(WitnessDemoCase::Preserving, args),
+        Command::WitnessViolating(args) => run_witness_case(WitnessDemoCase::Violating, args),
+        Command::SealCampaign {
+            root,
+            airlock_commit,
+            coverage,
+        } => {
+            let verified = seal_campaign(&root, &airlock_commit, &coverage)
+                .with_context(|| format!("seal campaign {}", root.display()))?;
+            println!(
+                "{}",
+                json!({
+                    "status": "AIRLOCK_CAMPAIGN_SEALED",
+                    "airlock_commit": verified.manifest.airlock_commit,
+                    "manifest_sha256": verified.manifest_sha256,
+                    "checksums_sha256": verified.checksums_sha256,
+                })
+            );
+            Ok(())
+        }
+        Command::VerifyCampaign {
+            root,
+            expected_airlock_commit,
+            worker,
+        } => {
+            let worker = worker.map_or_else(default_worker_path, Ok)?;
+            let verified = verify_campaign(&root, &expected_airlock_commit, &worker)
+                .with_context(|| format!("verify campaign {}", root.display()))?;
+            println!(
+                "{}",
+                json!({
+                    "status": "AIRLOCK_CAMPAIGN_REPLAY_MATCHED",
+                    "airlock_commit": verified.manifest.airlock_commit,
+                    "manifest_sha256": verified.manifest_sha256,
+                    "checksums_sha256": verified.checksums_sha256,
+                })
+            );
+            Ok(())
+        }
     }
 }
 
@@ -120,7 +189,7 @@ enum WitnessDemoCase {
     Violating,
 }
 
-fn run_witness_case(case: WitnessDemoCase) -> Result<()> {
+fn run_witness_case(case: WitnessDemoCase, args: WitnessArgs) -> Result<()> {
     let adapter = StwoWitnessAdapter::new().context("build pinned witness adapter")?;
     let replay = match case {
         WitnessDemoCase::Honest => adapter.replay_honest(),
@@ -140,6 +209,12 @@ fn run_witness_case(case: WitnessDemoCase) -> Result<()> {
             replay.report.verdict
         );
     }
+    let artifact_sha256 = args
+        .output
+        .as_ref()
+        .map(|output| write_witness_replay(output, &replay))
+        .transpose()
+        .context("write complete witness replay")?;
     let mutation = replay.observation.mutation.as_ref();
     println!(
         "{}",
@@ -153,6 +228,7 @@ fn run_witness_case(case: WitnessDemoCase) -> Result<()> {
             "audit_ir_constraints_hold": replay.observation.audit_ir_constraints_hold,
             "proof_generation": replay.observation.proof_generation,
             "verifier": replay.observation.verifier,
+            "artifact_sha256": artifact_sha256,
         })
     );
     Ok(())

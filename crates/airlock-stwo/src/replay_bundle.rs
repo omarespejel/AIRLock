@@ -117,6 +117,28 @@ pub fn verify_replay_bundle(output_dir: &Path) -> Result<ReplayBundleFiles, Repl
 pub fn read_verified_replay_bundle(
     output_dir: &Path,
 ) -> Result<VerifiedReplayBundle, ReplayBundleError> {
+    inspect_replay_bundle_inventory(output_dir)?;
+
+    let request_bytes = read_bounded(
+        &output_dir.join(REQUEST_FILE),
+        REQUEST_FILE,
+        MAX_REQUEST_FILE_BYTES,
+    )?;
+    let report_bytes = read_bounded(
+        &output_dir.join(REPORT_FILE),
+        REPORT_FILE,
+        MAX_REPORT_FILE_BYTES,
+    )?;
+    let checksum_bytes = read_bounded(
+        &output_dir.join(CHECKSUM_FILE),
+        CHECKSUM_FILE,
+        MAX_CHECKSUM_FILE_BYTES,
+    )?;
+
+    verified_replay_bundle_from_bytes(&request_bytes, &report_bytes, &checksum_bytes)
+}
+
+pub(crate) fn inspect_replay_bundle_inventory(output_dir: &Path) -> Result<(), ReplayBundleError> {
     let metadata = fs::symlink_metadata(output_dir).map_err(|error| ReplayBundleError::Io {
         operation: "inspect replay bundle directory",
         path: output_dir.to_path_buf(),
@@ -158,26 +180,17 @@ pub fn read_verified_replay_bundle(
     if observed != expected {
         return Err(ReplayBundleError::IncompleteInventory);
     }
+    Ok(())
+}
 
-    let request_bytes = read_bounded(
-        &output_dir.join(REQUEST_FILE),
-        REQUEST_FILE,
-        MAX_REQUEST_FILE_BYTES,
-    )?;
-    let report_bytes = read_bounded(
-        &output_dir.join(REPORT_FILE),
-        REPORT_FILE,
-        MAX_REPORT_FILE_BYTES,
-    )?;
-    let checksum_bytes = read_bounded(
-        &output_dir.join(CHECKSUM_FILE),
-        CHECKSUM_FILE,
-        MAX_CHECKSUM_FILE_BYTES,
-    )?;
-
-    let request_sha256 = sha256_bytes(&request_bytes);
-    let report_sha256 = sha256_bytes(&report_bytes);
-    let checksums = parse_checksum_document(&checksum_bytes)?;
+pub(crate) fn verified_replay_bundle_from_bytes(
+    request_bytes: &[u8],
+    report_bytes: &[u8],
+    checksum_bytes: &[u8],
+) -> Result<VerifiedReplayBundle, ReplayBundleError> {
+    let request_sha256 = sha256_bytes(request_bytes);
+    let report_sha256 = sha256_bytes(report_bytes);
+    let checksums = parse_checksum_document(checksum_bytes)?;
     if checksums.get(REQUEST_FILE) != Some(&request_sha256)
         || checksums.get(REPORT_FILE) != Some(&report_sha256)
         || checksums.len() != 2
@@ -185,9 +198,9 @@ pub fn read_verified_replay_bundle(
         return Err(ReplayBundleError::ChecksumMismatch);
     }
 
-    let request: ReplayRequest = serde_json::from_slice(&request_bytes)
+    let request: ReplayRequest = serde_json::from_slice(request_bytes)
         .map_err(|error| ReplayBundleError::MalformedArtifact(error.to_string()))?;
-    let report: IsolatedReplayRecord = serde_json::from_slice(&report_bytes)
+    let report: IsolatedReplayRecord = serde_json::from_slice(report_bytes)
         .map_err(|error| ReplayBundleError::MalformedArtifact(error.to_string()))?;
     report.validate(&request)?;
 
@@ -195,7 +208,7 @@ pub fn read_verified_replay_bundle(
         files: ReplayBundleFiles {
             request_file_sha256: request_sha256,
             report_file_sha256: report_sha256,
-            checksums_file_sha256: sha256_bytes(&checksum_bytes),
+            checksums_file_sha256: sha256_bytes(checksum_bytes),
         },
         request,
         report,
