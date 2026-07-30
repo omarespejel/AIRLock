@@ -17,10 +17,10 @@ or that a green AIRLock report establishes whole-system STARK security.
 | AuditIR schema (`airlock-ir`) | landed |
 | Static gate (`airlock-lint`) | schema/shape + parameter/phase closure + preprocessed integrity + Q8 support/functionality + encoder bound + LogUp finalize |
 | Verifier boundary contracts (`airlock-boundary`) | proof-neutral request/supply/consumption and typed transcript oracles |
-| Pinned Stwo adapter (`airlock-stwo`) | real demo proof, verifier-derived OODS requests, sample-only mutations, raw-PCS/framework replay, subprocess containment, verified replay bundles, generated Rust regression |
+| Pinned Stwo adapter (`airlock-stwo`) | real demo proof, verifier-derived OODS requests, sample-only mutations, raw-PCS/framework replay, phase-bound pre-commitment witness injection, subprocess containment, verified replay bundles, generated Rust regression |
 | CLI (`airlock`) | `air`, `coverage`, `schema` |
 | Stwo `AuditEvaluator` exporter | landed (`airlock-export`); concrete differential checks cover one synthetic cross-interaction AIR |
-| cvc5 / Lean / phase injection | later PRs |
+| cvc5 / Lean | later PRs |
 
 See [docs/SPEC.md](docs/SPEC.md) and [docs/coverage.yaml](docs/coverage.yaml).
 The fail-closed boundary profiles are specified in
@@ -42,6 +42,10 @@ cargo +nightly-2026-01-15 test -p airlock-export \
 
 # Honest proof, adversarial rejection, verified bundles, and Rust regression.
 scripts/demo-stwo-boundary.sh
+
+# Direct phase-bound witness campaigns are also exposed by the demo binary.
+cargo +nightly-2026-01-15 run -p airlock-stwo --bin airlock-stwo-demo -- \
+  witness-preserving
 
 cargo +nightly-2026-01-15 run -p airlock-cli -- air \
   --manifest fixtures/seeded/q8_padded_table_vulnerable.json
@@ -87,6 +91,16 @@ replay. Solver/Lean tracks remain separate lanes.
   exact `-z` constant and `alpha`-power coefficients pass the exporter
   fingerprint; custom relation protocols and universal equivalence for every
   `FrameworkEval` remain unsupported.
+- The pre-commitment witness adapter covers one original-phase M31 column in
+  the pinned transition demo. It evaluates the exact mutated values in AuditIR
+  before committing them, then regenerates a real Stwo proof and invokes the
+  full verifier whenever proof generation succeeds. The checked campaigns
+  cover the honest trace, an all-row constraint-preserving Increment mutation,
+  and one single-cell Increment mutation at each of the 16 physical rows.
+  Public, interaction, and reduction phases,
+  other columns, semantic claims beyond the emitted AIR, and universal
+  malicious-witness coverage remain unsupported. The direct witness demo is
+  in-process; it is not the isolated replay worker or an OS sandbox.
 - A green transcript report establishes only the declared event-order and
   validation prerequisites, exact PoW configuration, and query shape over one
   complete typed trace. It does not establish Fiat--Shamir or FRI security.

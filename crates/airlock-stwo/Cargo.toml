@@ -5,10 +5,12 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Pinned Stwo verifier-boundary adapter for AIRLock"
+description = "Pinned Stwo integration and verifier-boundary demo adapter for AIRLock"
 
 [dependencies]
 airlock-boundary.workspace = true
+airlock-export.workspace = true
+airlock-ir.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 libc.workspace = true

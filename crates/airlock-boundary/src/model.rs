@@ -211,7 +211,7 @@ impl BoundaryObservation {
     }
 }
 
-fn is_valid_rejection_kind(kind: &str) -> bool {
+pub(crate) fn is_valid_rejection_kind(kind: &str) -> bool {
     !kind.is_empty()
         && kind.trim() == kind
         && kind.bytes().all(|byte| {

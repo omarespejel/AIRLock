@@ -1,8 +1,11 @@
-//! Executable AIRLock adapter for the pinned Stwo verifier boundary.
+//! Executable AIRLock integration adapter for the pinned Stwo demo.
 //!
 //! This crate generates a small honest Stwo proof, derives verifier requests
 //! from the component masks, applies proof-system-neutral mutation plans, and
 //! replays each case through both the raw PCS and ordinary framework paths.
+//! Its witness campaign intentionally composes the separate AuditIR and
+//! verifier-boundary lanes so their observations can be compared. Their
+//! coverage and verdicts remain independent.
 //! It does not establish Stwo, FRI, Fiat--Shamir, or application soundness.
 
 mod adapter;
@@ -13,6 +16,7 @@ mod regression;
 mod replay_bundle;
 mod request;
 mod temp;
+mod witness;
 
 pub use adapter::{
     DifferentialReplay, DifferentialVerdict, LayerReplay, StwoBoundaryAdapter, StwoBoundaryError,
@@ -29,6 +33,9 @@ pub use replay_bundle::{
 };
 pub use request::{
     ReplayCase, ReplayRequest, ReplayRequestError, execute_replay_request, replay_request_sha256,
+};
+pub use witness::{
+    STWO_DEMO_WITNESS_TARGET, StwoWitnessAdapter, StwoWitnessError, StwoWitnessReplay,
 };
 
 /// Upstream source commit whose dependency trees are pinned by AIRLock.
