@@ -48,6 +48,38 @@ const MAX_REGRESSION_BYTES: u64 = 1 << 20;
 const MAX_CHECKSUM_BYTES: u64 = 16 << 10;
 const CANONICAL_COVERAGE: &[u8] = include_bytes!("../../../docs/coverage.yaml");
 
+const LOCAL_PATH_MARKERS: &[&str] = &["/users/", "/home/", "c:\\users\\", "file://"];
+const CREDENTIAL_MARKERS: &[&str] = &[
+    "github_pat_",
+    "ghp_",
+    "gho_",
+    "ghs_",
+    "authorization: bearer ",
+    "\"access_token\"",
+    "\"refresh_token\"",
+    "token=",
+    "-----begin private key-----",
+    "-----begin rsa private key-----",
+    "-----begin openssh private key-----",
+];
+const AI_ATTRIBUTION_MARKERS: &[&str] = &["chatgpt", "claude", "codex", "qodo", "coderabbit"];
+const INTERNAL_NARRATIVE_MARKERS: &[&str] = &[
+    "sparseprove",
+    "flagship",
+    "pilot target",
+    "paper surface",
+    "after exporter lands",
+    "after stage a pilot",
+    "must remain listed",
+    "out of v1 scope",
+    "previous version",
+    "earlier version",
+    "historical version",
+    "predecessor",
+    "retained as diagnostics",
+    "internal-only",
+];
+
 const NON_CLAIMS: [&str; 5] = [
     "Statement binding is unsupported.",
     "Executable transcript, Fiat-Shamir, and FRI assurance is unsupported.",
@@ -360,6 +392,7 @@ fn read_campaign_snapshot(
         }
         checked_bytes.insert(path.clone(), bytes);
     }
+    validate_external_artifact_text(&checked_bytes)?;
 
     let manifest_bytes = checked_file(&checked_bytes, MANIFEST_FILE)?;
     let manifest: CampaignManifest = serde_json::from_slice(manifest_bytes)
@@ -963,6 +996,33 @@ fn expected_non_claims() -> Vec<String> {
     NON_CLAIMS.into_iter().map(str::to_owned).collect()
 }
 
+fn validate_external_artifact_text(
+    checked_bytes: &BTreeMap<String, Vec<u8>>,
+) -> Result<(), CampaignError> {
+    for (path, bytes) in checked_bytes {
+        let text =
+            std::str::from_utf8(bytes).map_err(|_| CampaignError::NonTextArtifact(path.clone()))?;
+        let normalized = text.to_ascii_lowercase();
+        for (category, markers) in [
+            ("local absolute path", LOCAL_PATH_MARKERS),
+            ("credential material", CREDENTIAL_MARKERS),
+            ("AI attribution", AI_ATTRIBUTION_MARKERS),
+            (
+                "internal or prior-version narrative",
+                INTERNAL_NARRATIVE_MARKERS,
+            ),
+        ] {
+            if markers.iter().any(|marker| normalized.contains(marker)) {
+                return Err(CampaignError::ForbiddenExternalContent {
+                    path: path.clone(),
+                    category,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
 fn summary_document(airlock_commit: &str, replay_worker_sha256: &str) -> String {
     format!(
         "# AIRLock Stwo Campaign\n\n\
@@ -973,7 +1033,7 @@ Replay worker: `{replay_worker_sha256}`\n\n\
 - Honest real proof through raw PCS and framework verification.\n\
 - Generic OODS scalar corruption rejected at both verifier layers.\n\
 - Honest, relation-preserving, and relation-violating phase-bound witness replay.\n\
-- The same three witness outcomes over the precommitted upstream Wide Fibonacci target.\n\
+- The same three witness outcomes over an independently selected upstream Wide Fibonacci target.\n\
 - Deterministic replay bundles and a generated Rust regression.\n\n\
 ## Not Established\n\n\
 {}\n",
@@ -1214,6 +1274,17 @@ pub enum CampaignError {
     /// A top-level digest does not match its file.
     #[error("campaign checksum mismatch for `{0}`")]
     ChecksumMismatch(String),
+    /// A checked campaign payload is not portable text.
+    #[error("campaign artifact `{0}` is not valid UTF-8 text")]
+    NonTextArtifact(String),
+    /// A checked campaign payload contains private or development-only text.
+    #[error("campaign artifact `{path}` contains forbidden {category}")]
+    ForbiddenExternalContent {
+        /// Fixed artifact path.
+        path: String,
+        /// Stable content class; the matched text is deliberately not echoed.
+        category: &'static str,
+    },
     /// Manifest payload digests do not match the exact bytes.
     #[error("campaign payload digest records do not match the exact files")]
     PayloadDigestMismatch,
@@ -1283,4 +1354,63 @@ pub enum CampaignError {
         /// Captured error without platform-specific source ownership.
         message: String,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use super::{CampaignError, validate_external_artifact_text};
+
+    fn snapshot(text: &[u8]) -> BTreeMap<String, Vec<u8>> {
+        BTreeMap::from([("SUMMARY.md".to_owned(), text.to_vec())])
+    }
+
+    #[test]
+    fn external_artifact_text_accepts_portable_current_scope() {
+        validate_external_artifact_text(&snapshot(
+            b"Observed executions do not establish a cryptographic theorem.\n",
+        ))
+        .expect("portable text");
+    }
+
+    #[test]
+    fn external_artifact_text_rejects_each_forbidden_content_class() {
+        for (text, expected_category) in [
+            (
+                b"Built under /Users/example/AIRLock\n".as_slice(),
+                "local absolute path",
+            ),
+            (
+                b"github_pat_not-a-real-token\n".as_slice(),
+                "credential material",
+            ),
+            (b"Generated by Claude\n".as_slice(), "AI attribution"),
+            (
+                b"Retained from the previous version\n".as_slice(),
+                "internal or prior-version narrative",
+            ),
+        ] {
+            let result = validate_external_artifact_text(&snapshot(text));
+            assert!(
+                matches!(
+                    result,
+                    Err(CampaignError::ForbiddenExternalContent {
+                        ref path,
+                        category
+                    }) if path == "SUMMARY.md" && category == expected_category
+                ),
+                "{expected_category}: {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn external_artifact_text_rejects_non_utf8_without_echoing_bytes() {
+        let result = validate_external_artifact_text(&snapshot(&[0xff]));
+        assert!(
+            matches!(result, Err(CampaignError::NonTextArtifact(ref path)) if path == "SUMMARY.md"),
+            "{result:?}"
+        );
+    }
 }

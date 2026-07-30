@@ -30,6 +30,11 @@ The demo also persists complete typed witness replays and seals the fixed case
 inventory into a deterministic source-bound campaign manifest. Campaign
 verification checks strict inventory, nested and top-level digests, exact
 verdicts, the coverage snapshot, generated regression, and fresh execution.
+`scripts/demo-airlock.sh` is the supported external surface. After dependencies
+are present it builds offline, emits stable stage markers, produces the complete
+campaign directory, and freshly verifies every executable case. Campaign
+verification also rejects non-text payloads, local paths, credential material,
+AI attribution, and development-history prose.
 The fixed inventory includes one target selected before its adapter existed:
 upstream `WideFibonacciEval<3>` at log size 4, with honest,
 relation-preserving, and relation-violating witness cases. It does not broaden

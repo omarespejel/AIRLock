@@ -127,7 +127,7 @@ pub struct LaneStatus {
     pub detail: Option<String>,
 }
 
-/// Machine-readable gate report (aggregatable by SparseProve reviewer packet).
+/// Machine-readable gate report for downstream release packets.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GateReport {
     /// Source commit.

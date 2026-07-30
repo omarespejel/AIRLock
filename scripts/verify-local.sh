@@ -95,8 +95,20 @@ run_expected_failure \
 
 DEMO_OUTPUT="$TMP_DIR/stwo-demo"
 DEMO_LOG="$TMP_DIR/stwo-demo.log"
-scripts/demo-stwo-boundary.sh "$DEMO_OUTPUT" >"$DEMO_LOG"
-grep -Fq 'AIRLOCK STWO DEMO PASSED' "$DEMO_LOG"
+scripts/demo-airlock.sh "$DEMO_OUTPUT" >"$DEMO_LOG"
+for stage in \
+  preflight \
+  source-pin \
+  build \
+  verifier-boundary \
+  transition-witness \
+  held-out-witness \
+  generated-regression \
+  campaign-seal \
+  fresh-verification; do
+  grep -Fq "AIRLOCK_DEMO_STAGE stage=$stage status=PASS" "$DEMO_LOG"
+done
+grep -Fq 'AIRLOCK_DEMO_COMPLETE' "$DEMO_LOG"
 test -s "$DEMO_OUTPUT/corrupt-oods-sample-regression.rs"
 printf 'PASS: Stwo honest, mutation, replay-bundle, and generated-regression demo\n'
 

@@ -4,23 +4,56 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TOOLCHAIN="$(sed -n 's/^channel = "\([^"]*\)"/\1/p' "$ROOT/rust-toolchain.toml")"
 
-if [[ -n "${1:-}" ]]; then
-  OUTPUT_ROOT="$1"
-  if [[ -e "$OUTPUT_ROOT" ]]; then
-    printf 'FAIL: demo output already exists: %s\n' "$OUTPUT_ROOT" >&2
-    exit 1
+fail() {
+  printf 'FAIL: %s\n' "$*" >&2
+  exit 1
+}
+
+stage() {
+  printf 'AIRLOCK_DEMO_STAGE stage=%s status=%s\n' "$1" "$2"
+}
+
+require_clean_tree() {
+  if [[ -n "$(git status --porcelain --untracked-files=normal)" ]]; then
+    git status --short >&2
+    fail "demo requires a clean source checkout"
   fi
-  mkdir -p "$OUTPUT_ROOT"
-else
-  OUTPUT_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/airlock-stwo-demo.XXXXXX")"
+}
+
+if [[ "$#" != "1" ]] || [[ -z "$1" ]]; then
+  fail "usage: scripts/demo-airlock.sh OUTPUT_DIRECTORY"
 fi
+OUTPUT_ROOT="$1"
 
 cd "$ROOT"
-scripts/verify-stwo-checkout.sh
-cargo +"$TOOLCHAIN" build --quiet --locked -p airlock-stwo --bins
+stage preflight BEGIN
+if [[ -z "$TOOLCHAIN" ]] || [[ "$(printf '%s\n' "$TOOLCHAIN" | wc -l | tr -d ' ')" != "1" ]]; then
+  fail "rust-toolchain.toml must contain exactly one channel"
+fi
+require_clean_tree
+if [[ -e "$OUTPUT_ROOT" ]] || [[ -L "$OUTPUT_ROOT" ]]; then
+  fail "demo output already exists: $OUTPUT_ROOT"
+fi
+stage preflight PASS
 
-DEMO="$ROOT/target/debug/airlock-stwo-demo"
-WORKER="$ROOT/target/debug/airlock-stwo-worker"
+stage source-pin BEGIN
+scripts/verify-stwo-checkout.sh
+stage source-pin PASS
+
+stage build BEGIN
+cargo +"$TOOLCHAIN" build --quiet --locked --offline -p airlock-stwo --bins
+TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/target}"
+if [[ "$TARGET_DIR" != /* ]]; then
+  TARGET_DIR="$ROOT/$TARGET_DIR"
+fi
+DEMO="$TARGET_DIR/debug/airlock-stwo-demo"
+WORKER="$TARGET_DIR/debug/airlock-stwo-worker"
+[[ -x "$DEMO" ]] || fail "demo executable was not built"
+[[ -x "$WORKER" ]] || fail "replay worker was not built"
+stage build PASS
+
+mkdir -p "$(dirname "$OUTPUT_ROOT")"
+mkdir "$OUTPUT_ROOT" || fail "could not create demo output: $OUTPUT_ROOT"
 HONEST="$OUTPUT_ROOT/honest"
 MUTATED="$OUTPUT_ROOT/corrupt-oods-sample"
 REGRESSION="$OUTPUT_ROOT/corrupt-oods-sample-regression.rs"
@@ -49,11 +82,14 @@ run_typed_replay_case() {
   grep -Fq '"report": {' "$evidence"
 }
 
-"$DEMO" honest --worker "$WORKER" --output "$HONEST"
-"$DEMO" corrupt-sample --worker "$WORKER" --output "$MUTATED"
-"$DEMO" verify --bundle "$HONEST" --worker "$WORKER"
-"$DEMO" verify --bundle "$MUTATED" --worker "$WORKER"
-"$DEMO" generate-regression --bundle "$MUTATED" --output "$REGRESSION"
+stage verifier-boundary BEGIN
+"$DEMO" honest --worker "$WORKER" --output "$HONEST" >/dev/null
+"$DEMO" corrupt-sample --worker "$WORKER" --output "$MUTATED" >/dev/null
+"$DEMO" verify --bundle "$HONEST" --worker "$WORKER" >/dev/null
+"$DEMO" verify --bundle "$MUTATED" --worker "$WORKER" >/dev/null
+stage verifier-boundary PASS
+
+stage transition-witness BEGIN
 run_typed_replay_case \
   witness-honest \
   HONEST_ACCEPTED \
@@ -69,6 +105,9 @@ run_typed_replay_case \
   CONSTRAINT_VIOLATION_REJECTED \
   "$WITNESS_VIOLATING" \
   AIRLOCK_WITNESS_REPLAY_EXPECTED
+stage transition-witness PASS
+
+stage held-out-witness BEGIN
 run_typed_replay_case \
   held-out-honest \
   HONEST_ACCEPTED \
@@ -84,7 +123,10 @@ run_typed_replay_case \
   CONSTRAINT_VIOLATION_REJECTED \
   "$HELD_OUT_VIOLATING" \
   AIRLOCK_HELD_OUT_REPLAY_EXPECTED
+stage held-out-witness PASS
 
+stage generated-regression BEGIN
+"$DEMO" generate-regression --bundle "$MUTATED" --output "$REGRESSION" >/dev/null
 test -s "$REGRESSION"
 if grep -Fq "$ROOT" "$REGRESSION"; then
   printf 'FAIL: generated regression contains the local repository path\n' >&2
@@ -112,14 +154,12 @@ printf '%s\n' \
 cargo +"$TOOLCHAIN" generate-lockfile --quiet --offline --manifest-path "$CHECK_CRATE/Cargo.toml"
 cargo +"$TOOLCHAIN" test --quiet --locked --offline \
   --manifest-path "$CHECK_CRATE/Cargo.toml" \
-  --target-dir "$ROOT/target"
+  --target-dir "$TARGET_DIR"
+stage generated-regression PASS
 
-if ! git diff --quiet || ! git diff --cached --quiet \
-  || [[ -n "$(git ls-files --others --exclude-standard)" ]]; then
-  printf 'FAIL: campaign source checkout is not clean\n' >&2
-  exit 1
-fi
+require_clean_tree
 AIRLOCK_COMMIT="$(git rev-parse HEAD)"
+stage campaign-seal BEGIN
 SEAL_RESULT="$(
   "$DEMO" seal-campaign \
     --root "$OUTPUT_ROOT" \
@@ -127,6 +167,9 @@ SEAL_RESULT="$(
     --coverage "$ROOT/docs/coverage.yaml"
 )"
 grep -Fq '"status":"AIRLOCK_CAMPAIGN_SEALED"' <<<"$SEAL_RESULT"
+stage campaign-seal PASS
+
+stage fresh-verification BEGIN
 VERIFY_RESULT="$(
   "$DEMO" verify-campaign \
     --root "$OUTPUT_ROOT" \
@@ -134,5 +177,6 @@ VERIFY_RESULT="$(
     --worker "$WORKER"
 )"
 grep -Fq '"status":"AIRLOCK_CAMPAIGN_REPLAY_MATCHED"' <<<"$VERIFY_RESULT"
+stage fresh-verification PASS
 
-printf 'AIRLOCK STWO DEMO PASSED output=%s\n' "$OUTPUT_ROOT"
+printf 'AIRLOCK_DEMO_COMPLETE\n'

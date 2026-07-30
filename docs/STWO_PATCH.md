@@ -34,8 +34,8 @@ uncompressed LogUp tuples from outside the Stwo crate.
 
 ## Upstream
 
-This is a non-breaking additive API. Prefer landing it on the SparseProve
-sibling branch / upstream Stwo rather than forking AIRLock's view of the AST.
+This is a non-breaking additive API. Prefer landing it upstream in Stwo rather
+than forking AIRLock's view of the AST.
 
 Until that API lands upstream, `scripts/verify-local.sh` fails unless the
 sibling checkout has byte-identical `Cargo.toml`, `Cargo.lock`, `crates/stwo`,
