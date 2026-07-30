@@ -9,7 +9,7 @@ use crate::{CaseKind, ScalarMutation, VerificationOutcome, model::is_valid_rejec
 pub const WITNESS_SCHEMA_ID: &str = "airlock.witness-observation";
 
 /// Serialized witness-injection artifact version.
-pub const WITNESS_SCHEMA_VERSION: &str = "0.1.0";
+pub const WITNESS_SCHEMA_VERSION: &str = "0.2.0";
 
 /// Maximum number of operations accepted by one witness-mutation plan.
 pub const MAX_WITNESS_MUTATIONS: usize = 128;
@@ -131,6 +131,8 @@ pub enum ProofGenerationOutcome {
     },
     /// The prover rejected the witness with a typed result.
     Rejected {
+        /// Whether the adapter attributes rejection to the AIR relation.
+        cause: ProofRejectionCause,
         /// Stable rejection category.
         kind: String,
         /// Diagnostic message.
@@ -155,6 +157,16 @@ pub enum ProofGenerationOutcome {
         /// Unsupported surface description.
         reason: String,
     },
+}
+
+/// Proof-system-neutral cause assigned to a typed prover rejection.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProofRejectionCause {
+    /// The prover established that the supplied witness violates its AIR.
+    ConstraintViolation,
+    /// The prover rejected for another reason that cannot confirm the campaign.
+    Other,
 }
 
 /// One AuditIR and real-prover observation over the same injected witness.
@@ -393,9 +405,21 @@ pub fn evaluate_witness(observation: &WitnessObservation) -> WitnessReport {
             "real verifier accepted a witness that violates the exported AuditIR relation"
                 .to_owned(),
         ),
-        (CaseKind::Mutated, false, _, _) => {
-            expected(observation, WitnessVerdict::ConstraintViolationRejected)
-        }
+        (
+            CaseKind::Mutated,
+            false,
+            ProofGenerationOutcome::Rejected {
+                cause: ProofRejectionCause::ConstraintViolation,
+                ..
+            },
+            None,
+        ) => expected(observation, WitnessVerdict::ConstraintViolationRejected),
+        (CaseKind::Mutated, false, _, _) => report(
+            observation,
+            WitnessVerdict::Unsupported,
+            WitnessFindingCode::Unsupported,
+            "relation violation was not rejected for a declared constraint cause".to_owned(),
+        ),
     }
 }
 
@@ -600,6 +624,7 @@ mod tests {
             CaseKind::Mutated,
             false,
             ProofGenerationOutcome::Rejected {
+                cause: ProofRejectionCause::ConstraintViolation,
                 kind: "constraints_not_satisfied".to_owned(),
                 message: "relation is nonzero".to_owned(),
             },
@@ -630,6 +655,7 @@ mod tests {
             CaseKind::Mutated,
             true,
             ProofGenerationOutcome::Rejected {
+                cause: ProofRejectionCause::ConstraintViolation,
                 kind: "constraints_not_satisfied".to_owned(),
                 message: "unexpected".to_owned(),
             },
@@ -645,6 +671,7 @@ mod tests {
             CaseKind::Honest,
             false,
             ProofGenerationOutcome::Rejected {
+                cause: ProofRejectionCause::ConstraintViolation,
                 kind: "constraints_not_satisfied".to_owned(),
                 message: "unexpected".to_owned(),
             },
@@ -727,6 +754,7 @@ mod tests {
             CaseKind::Mutated,
             false,
             ProofGenerationOutcome::Rejected {
+                cause: ProofRejectionCause::ConstraintViolation,
                 kind: "constraints_not_satisfied".to_owned(),
                 message: "rejected".to_owned(),
             },
@@ -749,6 +777,7 @@ mod tests {
             CaseKind::Mutated,
             false,
             ProofGenerationOutcome::Rejected {
+                cause: ProofRejectionCause::ConstraintViolation,
                 kind: " invalid category ".to_owned(),
                 message: "rejected".to_owned(),
             },
@@ -784,5 +813,40 @@ mod tests {
             verifier_report.findings[0].code,
             WitnessFindingCode::InvalidWitnessContract
         );
+    }
+
+    #[test]
+    fn unrelated_rejection_cannot_confirm_constraint_enforcement() {
+        let unrelated = observation(
+            CaseKind::Mutated,
+            false,
+            ProofGenerationOutcome::Rejected {
+                cause: ProofRejectionCause::Other,
+                kind: "resource_limit".to_owned(),
+                message: "worker exhausted its budget".to_owned(),
+            },
+            None,
+        );
+        let report = evaluate_witness(&unrelated);
+        assert_eq!(report.verdict, WitnessVerdict::Unsupported);
+        assert_eq!(report.findings[0].code, WitnessFindingCode::Unsupported);
+        assert!(!report.verdict.is_expected());
+
+        let verifier_rejected = observation(
+            CaseKind::Mutated,
+            false,
+            generated(),
+            Some(VerificationOutcome::Rejected {
+                kind: "invalid_structure".to_owned(),
+                message: "proof shape was rejected before relation evaluation".to_owned(),
+            }),
+        );
+        let verifier_report = evaluate_witness(&verifier_rejected);
+        assert_eq!(verifier_report.verdict, WitnessVerdict::Unsupported);
+        assert_eq!(
+            verifier_report.findings[0].code,
+            WitnessFindingCode::Unsupported
+        );
+        assert!(!verifier_report.verdict.is_expected());
     }
 }

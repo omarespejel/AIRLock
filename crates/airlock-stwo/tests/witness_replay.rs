@@ -1,6 +1,6 @@
 use airlock_boundary::{
-    ProofGenerationOutcome, ScalarMutation, VerificationOutcome, WitnessCellPath,
-    WitnessMutationOperation, WitnessPhase, WitnessVerdict,
+    ProofGenerationOutcome, ProofRejectionCause, ScalarMutation, VerificationOutcome,
+    WitnessCellPath, WitnessMutationOperation, WitnessPhase, WitnessVerdict,
 };
 use airlock_stwo::{StwoWitnessAdapter, StwoWitnessError};
 
@@ -80,8 +80,11 @@ fn incrementing_each_single_cell_is_rejected_before_verifier_replay() {
         assert!(
             matches!(
                 replay.observation.proof_generation,
-                ProofGenerationOutcome::Rejected { ref kind, .. }
-                    if kind == "constraints_not_satisfied"
+                ProofGenerationOutcome::Rejected {
+                    cause: ProofRejectionCause::ConstraintViolation,
+                    ref kind,
+                    ..
+                } if kind == "constraints_not_satisfied"
             ),
             "row {row}"
         );

@@ -37,8 +37,8 @@ pub use transcript_oracle::{
     TranscriptVerdict, evaluate_transcript,
 };
 pub use witness::{
-    MAX_WITNESS_MUTATIONS, ProofGenerationOutcome, WITNESS_SCHEMA_ID, WITNESS_SCHEMA_VERSION,
-    WitnessCellPath, WitnessContractError, WitnessFinding, WitnessFindingCode,
-    WitnessMutationOperation, WitnessMutationPlan, WitnessObservation, WitnessPhase, WitnessReport,
-    WitnessVerdict, evaluate_witness,
+    MAX_WITNESS_MUTATIONS, ProofGenerationOutcome, ProofRejectionCause, WITNESS_SCHEMA_ID,
+    WITNESS_SCHEMA_VERSION, WitnessCellPath, WitnessContractError, WitnessFinding,
+    WitnessFindingCode, WitnessMutationOperation, WitnessMutationPlan, WitnessObservation,
+    WitnessPhase, WitnessReport, WitnessVerdict, evaluate_witness,
 };

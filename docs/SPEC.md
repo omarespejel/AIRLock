@@ -199,7 +199,10 @@ proof-generation outcomes, and a fail-closed oracle. Every cell path names its
 commitment phase, AuditIR column, and physical row. Mutation plans bind the
 target, pinned source, case id, exact operations, and canonical pre/post witness
 digests. A generated proof must carry its digest and a verifier outcome; a
-prover rejection must not claim that the verifier ran.
+prover rejection must not claim that the verifier ran. A relation-violating
+campaign is expected only when the adapter assigns the typed
+`constraint_violation` cause to a prover rejection. Unrelated prover rejection
+or an unattributed verifier rejection remains non-green.
 
 `StwoWitnessAdapter` instantiates this contract for the pinned transition demo.
 It exports the same `FrameworkEval` to AuditIR, discovers its sole original
