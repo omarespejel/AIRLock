@@ -16,8 +16,8 @@ green AIRLock report establishes whole-system STARK security.
 | --- | --- |
 | AuditIR schema (`airlock-ir`) | landed |
 | Static gate (`airlock-lint`) | schema/shape + parameter/phase closure + preprocessed integrity + Q8 support/functionality + encoder bound + LogUp finalize |
-| Verifier boundary contracts (`airlock-boundary`) | proof-neutral request/supply/consumption and typed transcript oracles |
-| Pinned Stwo adapter (`airlock-stwo`) | real demo proof, verifier-derived OODS requests, sample-only mutations, raw-PCS/framework replay, phase-bound pre-commitment witness injection, one independently selected upstream Wide Fibonacci target, subprocess containment, verified replay bundles, generated Rust regression, sealed portable campaign |
+| Verifier boundary contracts (`airlock-boundary`) | proof-neutral request/supply/consumption, typed transcript oracles, and exact witness-matrix contracts |
+| Pinned Stwo adapter (`airlock-stwo`) | real demo proof, verifier-derived OODS requests, sample-only mutations, raw-PCS/framework replay, phase-bound pre-commitment witness injection, one independently selected upstream Wide Fibonacci target, deterministic cross-target cell matrix, subprocess containment, verified replay bundles, generated Rust regression, sealed portable campaign |
 | CLI (`airlock`) | `air`, `coverage`, `schema` |
 | Stwo `AuditEvaluator` exporter | landed (`airlock-export`); concrete differential checks cover one synthetic cross-interaction AIR |
 | cvc5 / Lean | later PRs |
@@ -61,6 +61,16 @@ cargo +nightly-2026-01-15 run --locked --offline \
 cargo +nightly-2026-01-15 run --locked --offline \
   -p airlock-stwo --bin airlock-stwo-demo -- \
   held-out-preserving
+
+# Derive all 128 original-cell Increment/Decrement cases for both targets.
+cargo +nightly-2026-01-15 run --locked --offline \
+  -p airlock-stwo --bin airlock-stwo-demo -- \
+  witness-matrix --output /tmp/airlock-witness-matrix.json
+
+# Validate the artifact and freshly replay all 128 cases.
+cargo +nightly-2026-01-15 run --locked --offline \
+  -p airlock-stwo --bin airlock-stwo-demo -- \
+  verify-witness-matrix --artifact /tmp/airlock-witness-matrix.json
 
 cargo +nightly-2026-01-15 run --locked --offline -p airlock-cli -- air \
   --manifest fixtures/seeded/q8_padded_table_vulnerable.json
@@ -126,6 +136,14 @@ replay. Solver/Lean tracks remain separate lanes.
   third-column-only Increment that violates it at every physical row. It does
   not cover other `stwo-examples` components, arbitrary scalar operators,
   application semantics, transcript or FRI soundness, or broad Stwo behavior.
+- The deterministic witness matrix applies `Increment` and `Decrement` once to
+  every declared original-phase M31 cell in the transition and held-out
+  adapters. The frozen matrix contains 128 cases: 16 relation-preserving
+  mutations accepted by the full path and 112 relation violations rejected for
+  a typed constraint cause. Exact generation and fresh replay are executable
+  evidence for those tuples only. The matrix is not random or solver-complete
+  search, does not cover other scalar operators or commitment phases, and does
+  not prove that no other malicious witness is accepted.
 - A green transcript report establishes only the declared event-order and
   validation prerequisites, exact PoW configuration, and query shape over one
   complete typed trace. It does not establish Fiat--Shamir or FRI security.

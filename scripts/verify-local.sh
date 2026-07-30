@@ -114,6 +114,27 @@ fi
 test -s "$DEMO_OUTPUT/corrupt-oods-sample-regression.rs"
 printf 'PASS: Stwo honest, mutation, replay-bundle, and generated-regression demo\n'
 
+WITNESS_MATRIX="$TMP_DIR/witness-matrix.json"
+WITNESS_MATRIX_GENERATE_LOG="$TMP_DIR/witness-matrix-generate.log"
+WITNESS_MATRIX_VERIFY_LOG="$TMP_DIR/witness-matrix-verify.log"
+WITNESS_MATRIX_SECOND="$TMP_DIR/witness-matrix-second.json"
+WITNESS_MATRIX_SECOND_LOG="$TMP_DIR/witness-matrix-second.log"
+cargo +"$TOOLCHAIN" run --quiet --locked --offline \
+  -p airlock-stwo --bin airlock-stwo-demo -- \
+  witness-matrix --output "$WITNESS_MATRIX" >"$WITNESS_MATRIX_GENERATE_LOG"
+grep -Fq '"status":"AIRLOCK_WITNESS_MATRIX_COMPLETE"' "$WITNESS_MATRIX_GENERATE_LOG"
+grep -Fq '"total":128' "$WITNESS_MATRIX_GENERATE_LOG"
+cargo +"$TOOLCHAIN" run --quiet --locked --offline \
+  -p airlock-stwo --bin airlock-stwo-demo -- \
+  verify-witness-matrix --artifact "$WITNESS_MATRIX" >"$WITNESS_MATRIX_VERIFY_LOG"
+grep -Fq '"status":"AIRLOCK_WITNESS_MATRIX_REPLAY_MATCHED"' "$WITNESS_MATRIX_VERIFY_LOG"
+grep -Fq '"total":128' "$WITNESS_MATRIX_VERIFY_LOG"
+cargo +"$TOOLCHAIN" run --quiet --locked --offline \
+  -p airlock-stwo --bin airlock-stwo-demo -- \
+  witness-matrix --output "$WITNESS_MATRIX_SECOND" >"$WITNESS_MATRIX_SECOND_LOG"
+cmp "$WITNESS_MATRIX" "$WITNESS_MATRIX_SECOND"
+printf 'PASS: deterministic 128-case cross-target witness matrix and fresh replay\n'
+
 if [[ "$(git rev-parse HEAD)" != "$CURRENT_COMMIT" ]]; then
   printf 'FAIL: HEAD changed while validation was running\n' >&2
   exit 1

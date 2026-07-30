@@ -243,6 +243,43 @@ rows, scalar operators, and all other Stwo examples fail closed or remain
 outside coverage. This is one held-out adapter-generality check, not a
 statistical benchmark or broad Stwo assurance.
 
+## Cross-target witness matrix
+
+`airlock-boundary` defines a proof-neutral matrix contract over a target's
+exact source identity, AuditIR digest, phase, ordered columns, physical row
+count, ordered scalar operators, cases, aggregate counts, and explicit
+non-claims. Validation reconstructs the complete Cartesian-product inventory
+and canonical case identities. Every case must contain exactly one declared
+cell mutation, a valid `WitnessObservation`, and the report recomputed by
+`evaluate_witness`. Counts and completion status are derived from those
+reports, not trusted from serialized fields. A structurally valid blocked
+campaign remains writable and freshly reproducible so AIRLock does not discard
+the evidence it is meant to find; it still fails every completion gate.
+
+The pinned Stwo policy `stwo-original-m31-cell-matrix-v1` fixes two targets in
+order: the transition demo and `WideFibonacciEval<3>`. It fixes
+`Phase1Original`, canonical M31 cells, and the ordered operators `Increment`
+then `Decrement`. Every declared original column, physical row, and operator is
+replayed once through concrete AuditIR evaluation and the real Stwo
+proof-generation path. This produces 32 transition cases and 96 held-out
+cases. In the current frozen matrix, 16 mutations preserve the relation and
+pass the full verifier; 112 violate AuditIR and receive a typed
+constraints-not-satisfied prover rejection.
+
+The JSON artifact is deterministic and externally content addressed by its
+SHA-256. Static verification rejects a changed schema, policy, source, target,
+AuditIR digest, capability, tuple, order, observation, report, count, status,
+or non-claim inventory. Fresh verification regenerates all 128 cases and
+requires exact artifact equality, which also detects a structurally valid but
+changed witness digest or proof result.
+
+A complete matrix means only that the two scoped adapters agreed with their
+exported AuditIR oracle over those exact mutations. It is not random fuzzing,
+solver-complete search, broad malicious-witness coverage, statement binding,
+transcript or FRI analysis, producer authentication, or a soundness theorem.
+Other phases, scalar operators, targets, and Stwo components remain
+unsupported.
+
 ## Isolated replay records
 
 `airlock-stwo-worker` accepts a bounded, content-addressed replay request and

@@ -211,7 +211,8 @@ impl HeldOutAdapter {
         self.seed.columns[0].len()
     }
 
-    fn audit_ir_sha256(&self) -> Result<String, HeldOutError> {
+    /// SHA-256 of the exact exported AuditIR manifest.
+    pub fn audit_ir_sha256(&self) -> Result<String, HeldOutError> {
         hash_manifest(&self.manifest)
             .map(|digest| digest.0)
             .map_err(|error| HeldOutError::Serialization(error.to_string()))
@@ -259,6 +260,16 @@ impl HeldOutAdapter {
         column: usize,
         row: usize,
     ) -> Result<WitnessMutationOperation, HeldOutError> {
+        self.mutation_operation(column, row, ScalarMutation::Increment)
+    }
+
+    /// Build one typed original-column scalar mutation after validating its cell.
+    pub fn mutation_operation(
+        &self,
+        column: usize,
+        row: usize,
+        mutation: ScalarMutation,
+    ) -> Result<WitnessMutationOperation, HeldOutError> {
         let column_id = self
             .column_ids
             .get(column)
@@ -274,7 +285,7 @@ impl HeldOutAdapter {
         }
         Ok(WitnessMutationOperation::ReplaceM31 {
             path: WitnessCellPath::new(WitnessPhase::Original, column_id, row),
-            value: ScalarMutation::Increment,
+            value: mutation,
         })
     }
 

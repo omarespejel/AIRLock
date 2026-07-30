@@ -14,6 +14,7 @@ mod path;
 mod transcript;
 mod transcript_oracle;
 mod witness;
+mod witness_matrix;
 
 pub use model::{
     BOUNDARY_SCHEMA_ID, BOUNDARY_SCHEMA_VERSION, BoundaryContract, BoundaryContractError,
@@ -42,4 +43,9 @@ pub use witness::{
     WitnessContractError, WitnessFinding, WitnessFindingCode, WitnessMutationOperation,
     WitnessMutationPlan, WitnessObservation, WitnessPhase, WitnessReport, WitnessVerdict,
     evaluate_witness,
+};
+pub use witness_matrix::{
+    WITNESS_MATRIX_SCHEMA_ID, WITNESS_MATRIX_SCHEMA_VERSION, WitnessMatrixCampaign,
+    WitnessMatrixCapability, WitnessMatrixCase, WitnessMatrixCounts, WitnessMatrixError,
+    WitnessMatrixStatus, WitnessMatrixTarget, witness_matrix_case_id,
 };

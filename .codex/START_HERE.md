@@ -39,6 +39,12 @@ The fixed inventory includes one target selected before its adapter existed:
 upstream `WideFibonacciEval<3>` at log size 4, with honest,
 relation-preserving, and relation-violating witness cases. It does not broaden
 coverage to other Stwo examples.
+Outside the fixed external-demo package, `airlock-stwo-demo witness-matrix`
+derives and executes the same two-operator matrix over every original-phase
+M31 cell declared by both adapters. Its 128 cases are deterministic and can be
+freshly replayed from one JSON artifact. This broadens the exercised cells and
+operators for the two exact targets; it is not solver search or broad Stwo
+coverage.
 The exporter numbers columns per interaction tree, validates its mask schedule
 against `InfoEvaluator`, and has a concrete differential fixture against
 Stwo's `AssertEvaluator` and relation tracker.
@@ -51,8 +57,8 @@ generation succeeds; other phases and semantic application claims remain
 unsupported. The runner is not an OS
 sandbox, and bundle checksums do not authenticate a producer. Statement
 binding, protocol/FRI/Fiat-Shamir analysis, evidence/provenance, solver search,
-and broader malicious-witness search remain separate or unfinished lanes unless
-current code and coverage say otherwise.
+and malicious-witness search beyond the declared deterministic matrix remain
+separate or unfinished lanes unless current code and coverage say otherwise.
 
 ## Before editing
 
