@@ -252,7 +252,9 @@ non-claims. Validation reconstructs the complete Cartesian-product inventory
 and canonical case identities. Every case must contain exactly one declared
 cell mutation, a valid `WitnessObservation`, and the report recomputed by
 `evaluate_witness`. Counts and completion status are derived from those
-reports, not trusted from serialized fields.
+reports, not trusted from serialized fields. A structurally valid blocked
+campaign remains writable and freshly reproducible so AIRLock does not discard
+the evidence it is meant to find; it still fails every completion gate.
 
 The pinned Stwo policy `stwo-original-m31-cell-matrix-v1` fixes two targets in
 order: the transition demo and `WideFibonacciEval<3>`. It fixes

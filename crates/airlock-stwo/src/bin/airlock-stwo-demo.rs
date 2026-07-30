@@ -169,6 +169,13 @@ fn main() -> Result<()> {
             let campaign = run_stwo_witness_matrix().context("run complete witness matrix")?;
             let artifact_sha256 = write_stwo_witness_matrix(&output, &campaign)
                 .with_context(|| format!("write {}", output.display()))?;
+            campaign.require_complete().with_context(|| {
+                format!(
+                    "witness matrix is blocked; evidence remains at {} with SHA-256 {}",
+                    output.display(),
+                    artifact_sha256
+                )
+            })?;
             let (total, preserving, rejected) = matrix_counts(&campaign);
             println!(
                 "{}",
@@ -189,6 +196,9 @@ fn main() -> Result<()> {
                 .with_context(|| format!("read {}", artifact.display()))?;
             verify_stwo_witness_matrix_fresh(&campaign)
                 .with_context(|| format!("freshly verify {}", artifact.display()))?;
+            campaign
+                .require_complete()
+                .context("fresh witness matrix reproduced a blocked campaign")?;
             let (total, preserving, rejected) = matrix_counts(&campaign);
             println!(
                 "{}",

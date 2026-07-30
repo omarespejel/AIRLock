@@ -51,7 +51,6 @@ pub fn run_stwo_witness_matrix() -> Result<WitnessMatrixCampaign, StwoWitnessMat
         non_claims: NON_CLAIMS.map(str::to_owned).to_vec(),
     };
     validate_stwo_witness_matrix(&campaign)?;
-    campaign.require_complete()?;
     Ok(campaign)
 }
 
@@ -81,11 +80,14 @@ pub fn validate_stwo_witness_matrix(
     {
         return Err(StwoWitnessMatrixError::WrongPolicy);
     }
-    campaign.require_complete()?;
     Ok(())
 }
 
-/// Write a complete matrix without replacing an existing artifact.
+/// Write a structurally valid matrix without replacing an existing artifact.
+///
+/// Blocked campaigns remain writable so a counterexample, panic, timeout, or
+/// inconclusive result is not discarded. Callers must separately require
+/// completion before reporting a successful gate.
 pub fn write_stwo_witness_matrix(
     path: &Path,
     campaign: &WitnessMatrixCampaign,
@@ -106,7 +108,7 @@ pub fn write_stwo_witness_matrix(
     Ok(sha256_bytes(&bytes))
 }
 
-/// Read and validate a complete matrix without executing fresh proofs.
+/// Read and structurally validate a matrix without executing fresh proofs.
 pub fn read_stwo_witness_matrix(
     path: &Path,
 ) -> Result<(WitnessMatrixCampaign, String), StwoWitnessMatrixError> {
@@ -139,6 +141,9 @@ pub fn read_stwo_witness_matrix(
 }
 
 /// Freshly execute the matrix and require exact agreement with the artifact.
+///
+/// This comparison also permits a reproducible blocked campaign. Callers must
+/// separately require completion before reporting a successful gate.
 pub fn verify_stwo_witness_matrix_fresh(
     campaign: &WitnessMatrixCampaign,
 ) -> Result<(), StwoWitnessMatrixError> {
@@ -399,11 +404,10 @@ mod tests {
             blocked.targets[0].capability.clone(),
             blocked.targets[0].cases.clone(),
         );
+        validate_stwo_witness_matrix(&blocked).expect("blocked evidence remains valid");
         assert!(matches!(
-            validate_stwo_witness_matrix(&blocked),
-            Err(StwoWitnessMatrixError::Contract(
-                WitnessMatrixError::CampaignBlocked(_)
-            ))
+            blocked.require_complete(),
+            Err(WitnessMatrixError::CampaignBlocked(_))
         ));
 
         let directory = PrivateTempDir::create_in(&std::env::temp_dir(), ".airlock-matrix-")
@@ -414,6 +418,15 @@ mod tests {
         assert_eq!(read, campaign);
         assert_eq!(read_sha, written_sha);
         assert!(write_stwo_witness_matrix(&path, &campaign).is_err());
+
+        let blocked_path = directory.path().join("blocked-matrix.json");
+        write_stwo_witness_matrix(&blocked_path, &blocked).expect("preserve blocked evidence");
+        let (read_blocked, _) =
+            read_stwo_witness_matrix(&blocked_path).expect("read blocked evidence");
+        assert!(matches!(
+            read_blocked.require_complete(),
+            Err(WitnessMatrixError::CampaignBlocked(_))
+        ));
 
         #[cfg(unix)]
         {
