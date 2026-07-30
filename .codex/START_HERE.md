@@ -33,12 +33,13 @@ The local demo gates both expected outcomes and emits a path-independent Rust
 regression. The bundle remains inside the verifier-boundary lane. Other proof
 containers remain outside this adapter's coverage. A separate phase-bound
 witness campaign now feeds one original-trace demo column through AuditIR,
-pre-commitment Stwo proof generation, and the full verifier; other phases and
-semantic application claims remain unsupported. The runner is not an OS
+pre-commitment Stwo proof generation, and the full verifier when proof
+generation succeeds; other phases and semantic application claims remain
+unsupported. The runner is not an OS
 sandbox, and bundle checksums do not authenticate a producer. Statement
 binding, protocol/FRI/Fiat-Shamir analysis, evidence/provenance, solver search,
-remain separate or unfinished lanes unless current code and coverage say
-otherwise.
+and broader malicious-witness search remain separate or unfinished lanes unless
+current code and coverage say otherwise.
 
 ## Before editing
 

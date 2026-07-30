@@ -95,8 +95,9 @@ replay. Solver/Lean tracks remain separate lanes.
   the pinned transition demo. It evaluates the exact mutated values in AuditIR
   before committing them, then regenerates a real Stwo proof and invokes the
   full verifier whenever proof generation succeeds. The checked campaigns
-  cover the honest trace, an all-row constraint-preserving mutation, and every
-  single-cell relation violation. Public, interaction, and reduction phases,
+  cover the honest trace, an all-row constraint-preserving Increment mutation,
+  and one single-cell Increment mutation at each of the 16 physical rows.
+  Public, interaction, and reduction phases,
   other columns, semantic claims beyond the emitted AIR, and universal
   malicious-witness coverage remain unsupported. The direct witness demo is
   in-process; it is not the isolated replay worker or an OS sandbox.

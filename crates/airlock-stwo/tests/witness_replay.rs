@@ -38,18 +38,11 @@ fn honest_witness_is_bound_to_audit_ir_and_the_full_verifier() {
 #[test]
 fn constraint_preserving_mutation_regenerates_and_verifies_a_real_proof() {
     let adapter = StwoWitnessAdapter::new().expect("adapter");
-    let operations = (0..adapter.row_count())
-        .map(|row| {
-            replace(
-                &adapter,
-                WitnessPhase::Original,
-                row,
-                ScalarMutation::Increment,
-            )
-        })
-        .collect();
     let replay = adapter
-        .replay_mutation("constant-one-witness", operations)
+        .replay_mutation(
+            "constant-one-witness",
+            adapter.increment_all_rows_operations(),
+        )
         .expect("constraint-preserving replay");
 
     assert!(replay.observation.audit_ir_constraints_hold);
@@ -69,18 +62,17 @@ fn constraint_preserving_mutation_regenerates_and_verifies_a_real_proof() {
 }
 
 #[test]
-fn every_single_cell_relation_violation_is_rejected_before_verifier_replay() {
+fn incrementing_each_single_cell_is_rejected_before_verifier_replay() {
     let adapter = StwoWitnessAdapter::new().expect("adapter");
     for row in 0..adapter.row_count() {
         let replay = adapter
             .replay_mutation(
                 format!("single-cell-violation-{row}"),
-                vec![replace(
-                    &adapter,
-                    WitnessPhase::Original,
-                    row,
-                    ScalarMutation::Increment,
-                )],
+                vec![
+                    adapter
+                        .increment_one_row_operation(row)
+                        .expect("in-range row"),
+                ],
             )
             .expect("constraint-violating replay");
 
@@ -159,6 +151,39 @@ fn unsupported_phases_columns_rows_and_scalars_fail_closed() {
         )
         .expect_err("unsupported scalar");
     assert!(matches!(scalar, StwoWitnessError::UnsupportedScalar { .. }));
+
+    let flip_bit = adapter
+        .replay_mutation(
+            "unsupported-flip-bit",
+            vec![replace(
+                &adapter,
+                WitnessPhase::Original,
+                0,
+                ScalarMutation::FlipBit { bit: 0 },
+            )],
+        )
+        .expect_err("unsupported flip-bit scalar");
+    assert!(matches!(
+        flip_bit,
+        StwoWitnessError::UnsupportedScalar { .. }
+    ));
+
+    let valid_operation = adapter
+        .increment_one_row_operation(0)
+        .expect("in-range row");
+    let invalid_case_ids = [
+        String::new(),
+        "a".repeat(129),
+        " leading-space".to_owned(),
+        "trailing-space ".to_owned(),
+        "invalid/character".to_owned(),
+    ];
+    for case_id in invalid_case_ids {
+        let error = adapter
+            .replay_mutation(case_id.clone(), vec![valid_operation.clone()])
+            .expect_err("invalid campaign id");
+        assert_eq!(error, StwoWitnessError::InvalidCaseId(case_id));
+    }
 }
 
 #[test]

@@ -11,7 +11,8 @@ pub const WITNESS_SCHEMA_ID: &str = "airlock.witness-observation";
 /// Serialized witness-injection artifact version.
 pub const WITNESS_SCHEMA_VERSION: &str = "0.1.0";
 
-const MAX_WITNESS_MUTATIONS: usize = 128;
+/// Maximum number of operations accepted by one witness-mutation plan.
+pub const MAX_WITNESS_MUTATIONS: usize = 128;
 
 /// Commitment phase owning a witness cell.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -135,6 +136,13 @@ pub enum ProofGenerationOutcome {
         /// Diagnostic message.
         message: String,
     },
+    /// Proof generation failed for an adapter or prover infrastructure reason.
+    InfrastructureFailure {
+        /// Stable failure category.
+        kind: String,
+        /// Diagnostic message.
+        message: String,
+    },
     /// Proof generation unwound or aborted.
     Panicked {
         /// Captured panic diagnostic.
@@ -246,6 +254,8 @@ pub enum WitnessFindingCode {
     HonestRelationRejected,
     /// A verifier or prover panic occurred.
     Panic,
+    /// Adapter or prover infrastructure failed before a conclusive result.
+    InfrastructureFailure,
     /// A bounded operation timed out.
     Timeout,
     /// The requested phase or target is unsupported.
@@ -274,8 +284,12 @@ pub enum WitnessVerdict {
     ConstraintViolationRejected,
     /// A relation-violating witness reached verifier acceptance.
     Counterexample,
+    /// The honest witness does not satisfy the exported AuditIR relation.
+    HonestRelationFailure,
     /// A relation-holding witness failed to prove or verify.
     CompletenessFailure,
+    /// Adapter or prover infrastructure failed before a conclusive result.
+    InfrastructureFailure,
     /// A verifier or prover panic occurred.
     Panic,
     /// A bounded operation timed out.
@@ -337,7 +351,7 @@ pub fn evaluate_witness(observation: &WitnessObservation) -> WitnessReport {
         ) => expected(observation, WitnessVerdict::HonestAccepted),
         (CaseKind::Honest, false, _, _) => report(
             observation,
-            WitnessVerdict::Counterexample,
+            WitnessVerdict::HonestRelationFailure,
             WitnessFindingCode::HonestRelationRejected,
             "honest witness does not satisfy the exported AuditIR relation".to_owned(),
         ),
@@ -372,7 +386,16 @@ pub fn evaluate_witness(observation: &WitnessObservation) -> WitnessReport {
 }
 
 fn exceptional_verdict(observation: &WitnessObservation) -> Option<WitnessReport> {
+    // Validation permits verifier outcomes only after Generated. The verifier-side
+    // alternatives below therefore classify generated proofs; adapters must not
+    // attach a captured verifier result to any other proof-generation outcome.
     match (&observation.proof_generation, &observation.verifier) {
+        (ProofGenerationOutcome::InfrastructureFailure { message, .. }, _) => Some(report(
+            observation,
+            WitnessVerdict::InfrastructureFailure,
+            WitnessFindingCode::InfrastructureFailure,
+            message.clone(),
+        )),
         (ProofGenerationOutcome::Panicked { message }, _)
         | (_, Some(VerificationOutcome::Panicked { message })) => Some(report(
             observation,
@@ -597,6 +620,25 @@ mod tests {
     }
 
     #[test]
+    fn honest_relation_rejection_is_an_exporter_failure() {
+        let result = evaluate_witness(&observation(
+            CaseKind::Honest,
+            false,
+            ProofGenerationOutcome::Rejected {
+                kind: "constraints_not_satisfied".to_owned(),
+                message: "unexpected".to_owned(),
+            },
+            None,
+        ));
+        assert_eq!(result.verdict, WitnessVerdict::HonestRelationFailure);
+        assert_eq!(
+            result.findings[0].code,
+            WitnessFindingCode::HonestRelationRejected
+        );
+        assert!(!result.verdict.is_expected());
+    }
+
+    #[test]
     fn malformed_or_exceptional_observations_fail_closed() {
         let mut malformed = observation(
             CaseKind::Mutated,
@@ -625,5 +667,59 @@ mod tests {
         ));
         assert_eq!(panic.verdict, WitnessVerdict::Panic);
         assert!(!panic.verdict.is_expected());
+
+        let timeout = evaluate_witness(&observation(
+            CaseKind::Mutated,
+            false,
+            ProofGenerationOutcome::TimedOut,
+            None,
+        ));
+        assert_eq!(timeout.verdict, WitnessVerdict::Timeout);
+        assert!(!timeout.verdict.is_expected());
+
+        let unsupported = evaluate_witness(&observation(
+            CaseKind::Mutated,
+            false,
+            ProofGenerationOutcome::Unsupported {
+                reason: "phase is outside the adapter".to_owned(),
+            },
+            None,
+        ));
+        assert_eq!(unsupported.verdict, WitnessVerdict::Unsupported);
+        assert!(!unsupported.verdict.is_expected());
+
+        let infrastructure_failure = evaluate_witness(&observation(
+            CaseKind::Mutated,
+            false,
+            ProofGenerationOutcome::InfrastructureFailure {
+                kind: "prover".to_owned(),
+                message: "prover infrastructure failed".to_owned(),
+            },
+            None,
+        ));
+        assert_eq!(
+            infrastructure_failure.verdict,
+            WitnessVerdict::InfrastructureFailure
+        );
+        assert!(!infrastructure_failure.verdict.is_expected());
+
+        let unexpected_verifier = evaluate_witness(&observation(
+            CaseKind::Mutated,
+            false,
+            ProofGenerationOutcome::Rejected {
+                kind: "constraints_not_satisfied".to_owned(),
+                message: "rejected".to_owned(),
+            },
+            Some(VerificationOutcome::Rejected {
+                kind: "invalid_structure".to_owned(),
+                message: "must not be attached".to_owned(),
+            }),
+        ));
+        assert_eq!(unexpected_verifier.verdict, WitnessVerdict::Unsupported);
+        assert_eq!(
+            unexpected_verifier.findings[0].code,
+            WitnessFindingCode::InvalidWitnessContract
+        );
+        assert!(!unexpected_verifier.verdict.is_expected());
     }
 }

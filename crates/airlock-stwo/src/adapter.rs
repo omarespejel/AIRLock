@@ -527,6 +527,25 @@ impl From<VerificationError> for VerifierFailure {
 /// Adapter construction or replay error.
 #[derive(Debug, Error)]
 pub enum StwoBoundaryError {
+    /// Demo witness does not contain the required number of rows.
+    #[error("demo witness has {actual} rows; expected {expected}")]
+    InvalidWitnessLength {
+        /// Required physical row count.
+        expected: usize,
+        /// Supplied physical row count.
+        actual: usize,
+    },
+    /// Demo witness contains a noncanonical M31 representative.
+    #[error("demo witness row {row} contains noncanonical M31 value {value}")]
+    NoncanonicalWitness {
+        /// Invalid physical row.
+        row: usize,
+        /// Invalid representative.
+        value: u32,
+    },
+    /// Stwo rejected the witness because its constraints are not satisfied.
+    #[error("Stwo prover rejected the witness because constraints are not satisfied")]
+    ConstraintsNotSatisfied,
     /// Honest proof generation failed.
     #[error("Stwo prover failed: {0}")]
     Prover(String),

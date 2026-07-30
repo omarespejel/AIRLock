@@ -107,13 +107,49 @@ fn cli_runs_verifies_and_renders_the_pinned_demo() {
     ]);
     assert!(!overwrite.status.success());
 
-    for command in ["witness-honest", "witness-preserving", "witness-violating"] {
+    for (command, expected_verdict) in [
+        ("witness-honest", "HONEST_ACCEPTED"),
+        ("witness-preserving", "CONSTRAINT_PRESERVING_ACCEPTED"),
+        ("witness-violating", "CONSTRAINT_VIOLATION_REJECTED"),
+    ] {
         let output = run(&[command]);
         assert!(output.status.success(), "{command}");
-        assert!(
-            String::from_utf8_lossy(&output.stdout).contains("AIRLOCK_WITNESS_REPLAY_EXPECTED"),
+        let document: serde_json::Value =
+            serde_json::from_slice(&output.stdout).expect("witness JSON");
+        assert_eq!(
+            document["status"], "AIRLOCK_WITNESS_REPLAY_EXPECTED",
             "{command}"
         );
+        assert_eq!(document["verdict"], expected_verdict, "{command}");
+        assert_eq!(
+            document["audit_ir_sha256"]
+                .as_str()
+                .expect("AuditIR digest")
+                .len(),
+            64,
+            "{command}"
+        );
+        if command == "witness-honest" {
+            assert!(document["seed_witness_sha256"].is_null(), "{command}");
+            assert!(document["mutated_witness_sha256"].is_null(), "{command}");
+        } else {
+            assert_eq!(
+                document["seed_witness_sha256"]
+                    .as_str()
+                    .expect("seed digest")
+                    .len(),
+                64,
+                "{command}"
+            );
+            assert_eq!(
+                document["mutated_witness_sha256"]
+                    .as_str()
+                    .expect("mutated digest")
+                    .len(),
+                64,
+                "{command}"
+            );
+        }
     }
     fs::remove_dir_all(parent).expect("remove CLI test directory");
 }

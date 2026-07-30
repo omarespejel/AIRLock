@@ -91,8 +91,22 @@ pub enum DemoFixtureBuildError {
 
 /// Build a deterministic, real prove-and-verify fixture against pinned Stwo.
 pub fn build_demo_fixture() -> Result<DemoFixture, StwoBoundaryError> {
-    build_demo_fixture_with_values(&[0; 1 << DEMO_LOG_ROWS])
-        .map_err(|error| StwoBoundaryError::Prover(error.to_string()))
+    build_demo_fixture_with_values(&[0; 1 << DEMO_LOG_ROWS]).map_err(StwoBoundaryError::from)
+}
+
+impl From<DemoFixtureBuildError> for StwoBoundaryError {
+    fn from(error: DemoFixtureBuildError) -> Self {
+        match error {
+            DemoFixtureBuildError::InvalidWitnessLength { expected, actual } => {
+                Self::InvalidWitnessLength { expected, actual }
+            }
+            DemoFixtureBuildError::NoncanonicalWitness { row, value } => {
+                Self::NoncanonicalWitness { row, value }
+            }
+            DemoFixtureBuildError::ConstraintsNotSatisfied => Self::ConstraintsNotSatisfied,
+            DemoFixtureBuildError::Prover(message) => Self::Prover(message),
+        }
+    }
 }
 
 pub(crate) fn transition_eval() -> TransitionEval {
@@ -167,4 +181,36 @@ pub(crate) fn build_demo_fixture_with_values(
         proof,
         config,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn typed_fixture_errors_survive_boundary_conversion() {
+        let length = StwoBoundaryError::from(DemoFixtureBuildError::InvalidWitnessLength {
+            expected: 16,
+            actual: 15,
+        });
+        assert!(matches!(
+            length,
+            StwoBoundaryError::InvalidWitnessLength {
+                expected: 16,
+                actual: 15
+            }
+        ));
+
+        let representative = StwoBoundaryError::from(DemoFixtureBuildError::NoncanonicalWitness {
+            row: 3,
+            value: M31_P,
+        });
+        assert!(matches!(
+            representative,
+            StwoBoundaryError::NoncanonicalWitness {
+                row: 3,
+                value: M31_P
+            }
+        ));
+    }
 }

@@ -5,9 +5,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use airlock_boundary::{
-    MutationOperation, ScalarMutation, WitnessCellPath, WitnessMutationOperation, WitnessPhase,
-};
+use airlock_boundary::{MutationOperation, ScalarMutation};
 use airlock_stwo::{
     ReplayRequest, StwoBoundaryAdapter, StwoWitnessAdapter, generate_regression_source,
     read_verified_replay_bundle, run_isolated_replay, write_replay_bundle,
@@ -128,23 +126,11 @@ fn run_witness_case(case: WitnessDemoCase) -> Result<()> {
         WitnessDemoCase::Honest => adapter.replay_honest(),
         WitnessDemoCase::Preserving => adapter.replay_mutation(
             "constant-one-witness",
-            (0..adapter.row_count())
-                .map(|row| WitnessMutationOperation::ReplaceM31 {
-                    path: WitnessCellPath::new(
-                        WitnessPhase::Original,
-                        adapter.original_column_id(),
-                        row,
-                    ),
-                    value: ScalarMutation::Increment,
-                })
-                .collect(),
+            adapter.increment_all_rows_operations(),
         ),
         WitnessDemoCase::Violating => adapter.replay_mutation(
             "single-cell-violation",
-            vec![WitnessMutationOperation::ReplaceM31 {
-                path: WitnessCellPath::new(WitnessPhase::Original, adapter.original_column_id(), 0),
-                value: ScalarMutation::Increment,
-            }],
+            vec![adapter.increment_one_row_operation(0)?],
         ),
     }
     .context("run phase-bound witness replay")?;
@@ -154,12 +140,16 @@ fn run_witness_case(case: WitnessDemoCase) -> Result<()> {
             replay.report.verdict
         );
     }
+    let mutation = replay.observation.mutation.as_ref();
     println!(
         "{}",
         json!({
             "status": "AIRLOCK_WITNESS_REPLAY_EXPECTED",
             "case_id": replay.report.case_id,
             "verdict": replay.report.verdict,
+            "audit_ir_sha256": replay.observation.audit_ir_sha256,
+            "seed_witness_sha256": mutation.map(|plan| &plan.seed_witness_sha256),
+            "mutated_witness_sha256": mutation.map(|plan| &plan.mutated_witness_sha256),
             "audit_ir_constraints_hold": replay.observation.audit_ir_constraints_hold,
             "proof_generation": replay.observation.proof_generation,
             "verifier": replay.observation.verifier,

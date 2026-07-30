@@ -4,9 +4,9 @@ use std::collections::BTreeMap;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use airlock_boundary::{
-    CaseKind, ProofGenerationOutcome, ScalarMutation, WITNESS_SCHEMA_ID, WITNESS_SCHEMA_VERSION,
-    WitnessCellPath, WitnessMutationOperation, WitnessMutationPlan, WitnessObservation,
-    WitnessPhase, WitnessReport, evaluate_witness,
+    CaseKind, MAX_WITNESS_MUTATIONS, ProofGenerationOutcome, ScalarMutation, WITNESS_SCHEMA_ID,
+    WITNESS_SCHEMA_VERSION, WitnessCellPath, WitnessMutationOperation, WitnessMutationPlan,
+    WitnessObservation, WitnessPhase, WitnessReport, evaluate_witness,
 };
 use airlock_export::{ConcreteAssignment, ExportAnnotations, constraints_hold, export_component};
 use airlock_ir::{AuditManifest, ColumnKind, CommitmentPhase, M31_P, SemanticType, hash_manifest};
@@ -24,7 +24,7 @@ use crate::{STWO_SOURCE_ID, proof_sha256};
 pub const STWO_DEMO_WITNESS_TARGET: &str = "stwo-demo-transition-witness-v1";
 
 const MAX_CASE_ID_BYTES: usize = 128;
-const MAX_WITNESS_MUTATIONS: usize = 128;
+const DEMO_ORIGINAL_COLUMN_ID: &str = "trace_1_column_0";
 
 /// AuditIR and real-proof replay of one phase-bound witness.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -87,7 +87,7 @@ impl StwoWitnessAdapter {
             ..ExportAnnotations::default()
         };
         annotations.column_semantics.insert(
-            "trace_1_column_0".to_owned(),
+            DEMO_ORIGINAL_COLUMN_ID.to_owned(),
             SemanticType::Other {
                 label: "demo_transition_state".to_owned(),
             },
@@ -110,6 +110,12 @@ impl StwoWitnessAdapter {
         if witness_columns.next().is_some() {
             return Err(StwoWitnessError::AmbiguousOriginalColumns);
         }
+        if column_id != DEMO_ORIGINAL_COLUMN_ID {
+            return Err(StwoWitnessError::OriginalColumnIdentityMismatch {
+                expected: DEMO_ORIGINAL_COLUMN_ID.to_owned(),
+                actual: column_id,
+            });
+        }
         Ok(Self {
             manifest,
             column_id,
@@ -130,6 +136,27 @@ impl StwoWitnessAdapter {
     /// Regenerate and verify the unmodified witness.
     pub fn replay_honest(&self) -> Result<StwoWitnessReplay, StwoWitnessError> {
         self.replay("honest-witness", CaseKind::Honest, self.seed.clone(), None)
+    }
+
+    /// Build the deterministic all-row increment used by the preserving demo case.
+    pub fn increment_all_rows_operations(&self) -> Vec<WitnessMutationOperation> {
+        (0..self.row_count())
+            .map(|row| self.increment_operation(row))
+            .collect()
+    }
+
+    /// Build one deterministic original-column increment after validating its row.
+    pub fn increment_one_row_operation(
+        &self,
+        row: usize,
+    ) -> Result<WitnessMutationOperation, StwoWitnessError> {
+        if row >= self.row_count() {
+            return Err(StwoWitnessError::RowOutOfBounds {
+                row,
+                rows: self.row_count(),
+            });
+        }
+        Ok(self.increment_operation(row))
     }
 
     /// Apply phase-bound cell mutations before commitment and replay the real proof path.
@@ -231,9 +258,26 @@ impl StwoWitnessAdapter {
                 },
                 None,
             ),
-            Ok(Err(error)) => (
-                ProofGenerationOutcome::Unsupported {
-                    reason: error.to_string(),
+            Ok(Err(DemoFixtureBuildError::InvalidWitnessLength { expected, actual })) => (
+                ProofGenerationOutcome::InfrastructureFailure {
+                    kind: "invalid_witness_length".to_owned(),
+                    message: format!("adapter supplied {actual} witness rows; expected {expected}"),
+                },
+                None,
+            ),
+            Ok(Err(DemoFixtureBuildError::NoncanonicalWitness { row, value })) => (
+                ProofGenerationOutcome::InfrastructureFailure {
+                    kind: "noncanonical_witness".to_owned(),
+                    message: format!(
+                        "adapter supplied noncanonical M31 value {value} at witness row {row}"
+                    ),
+                },
+                None,
+            ),
+            Ok(Err(DemoFixtureBuildError::Prover(message))) => (
+                ProofGenerationOutcome::InfrastructureFailure {
+                    kind: "prover".to_owned(),
+                    message,
                 },
                 None,
             ),
@@ -265,6 +309,13 @@ impl StwoWitnessAdapter {
         };
         replay.validate()?;
         Ok(replay)
+    }
+
+    fn increment_operation(&self, row: usize) -> WitnessMutationOperation {
+        WitnessMutationOperation::ReplaceM31 {
+            path: WitnessCellPath::new(WitnessPhase::Original, &self.column_id, row),
+            value: ScalarMutation::Increment,
+        }
     }
 }
 
@@ -300,9 +351,15 @@ fn mutate_m31(
 }
 
 fn witness_sha256(witness: &DemoWitness) -> Result<String, StwoWitnessError> {
-    let bytes = serde_json::to_vec(witness)
+    let row_count = u64::try_from(witness.original_column.len())
         .map_err(|error| StwoWitnessError::Serialization(error.to_string()))?;
-    Ok(format!("{:x}", Sha256::digest(bytes)))
+    let mut hasher = Sha256::new();
+    hasher.update(b"airlock.demo-witness.v1\0");
+    hasher.update(row_count.to_le_bytes());
+    for value in &witness.original_column {
+        hasher.update(value.to_le_bytes());
+    }
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 fn validate_case_id(case_id: &str) -> Result<(), StwoWitnessError> {
@@ -341,6 +398,14 @@ pub enum StwoWitnessError {
     /// The scoped fixture must contain exactly one original witness column.
     #[error("demo AuditIR manifest contains multiple original-phase witness columns")]
     AmbiguousOriginalColumns,
+    /// Exported original column does not match the annotated identity.
+    #[error("demo original column identity changed from `{expected}` to `{actual}`")]
+    OriginalColumnIdentityMismatch {
+        /// Identity carrying the semantic annotation.
+        expected: String,
+        /// Identity discovered from the exported phase metadata.
+        actual: String,
+    },
     /// Campaign case identity is malformed.
     #[error("invalid witness campaign case id `{0}`")]
     InvalidCaseId(String),
@@ -375,10 +440,31 @@ pub enum StwoWitnessError {
     /// Concrete AuditIR evaluation failed.
     #[error("could not evaluate the injected AuditIR assignment: {0}")]
     ConcreteEvaluation(String),
-    /// Canonical JSON or artifact hashing failed.
+    /// Canonical artifact hashing failed.
     #[error("could not serialize the witness campaign: {0}")]
     Serialization(String),
     /// Stored replay does not recompute to the same report.
     #[error("invalid Stwo witness replay: {0}")]
     InvalidReplay(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn witness_digest_uses_the_documented_binary_encoding() {
+        let honest = DemoWitness::honest();
+        assert_eq!(
+            witness_sha256(&honest).expect("digest"),
+            "91da262c96adc1716f37274d6614b77c8d6efdddce370d1946beb4415d81526b"
+        );
+
+        let mut changed = honest;
+        changed.original_column[0] = 1;
+        assert_ne!(
+            witness_sha256(&changed).expect("changed digest"),
+            "91da262c96adc1716f37274d6614b77c8d6efdddce370d1946beb4415d81526b"
+        );
+    }
 }

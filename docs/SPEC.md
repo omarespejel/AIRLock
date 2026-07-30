@@ -15,7 +15,7 @@ AIRLock is **not** a whole-system STARK soundness verifier.
 | AIR relation | `airlock air` | static gate over AuditIR |
 | Statement binding | separate | `OUT_OF_MODEL` |
 | Verifier boundary | `airlock-boundary`, `airlock-stwo` | contracts, one pinned executable demo adapter, and its replay records |
-| Witness consistency | `airlock-boundary`, `airlock-stwo` | one original-phase demo column, AuditIR evaluation, real proof regeneration, and full verifier replay |
+| Witness consistency | `airlock-boundary`, `airlock-stwo` | one original-phase demo column, AuditIR evaluation, real proof regeneration, and full verifier replay when proof generation succeeds |
 | Protocol / FRI / FS | `airlock-boundary` | typed transcript contract/oracle only; executable transcript capture remains `UNINSTANTIATED` |
 | Evidence / provenance | separate | `NOT_RUN`; replay bundles do not establish authorship or external provenance |
 
@@ -210,13 +210,15 @@ produces a proof, the adapter runs the complete framework verifier and records
 the outcome. The AuditIR manifest and generated proof are content addressed.
 
 The checked campaign contains three independent cases: the honest zero trace;
-an all-row shift to a constant-one trace that still satisfies the relation and
-passes the full verifier; and all 16 single-cell shifts, each of which violates
-AuditIR and is rejected by Stwo's prover as constraints-not-satisfied. This is
+an all-row Increment mutation to a constant-one trace that still satisfies the
+relation and passes the full verifier; and one single-cell Increment mutation at
+each of the 16 physical rows, each of which violates AuditIR and is rejected by
+Stwo's prover as constraints-not-satisfied. This is
 evidence that the scoped exporter, concrete evaluator, committed witness, and
 real proof path agree on those cases. It is not a semantic application oracle,
 a solver search, or proof that no other witness is accepted. Public,
-interaction, and reduction-phase mutation requests fail as unsupported.
+interaction, reduction-phase, other-column, and other-scalar mutation requests
+fail as unsupported.
 
 ## Isolated replay records
 
