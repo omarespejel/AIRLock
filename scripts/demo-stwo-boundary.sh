@@ -41,7 +41,7 @@ run_witness_case() {
   grep -Fq '"artifact_sha256":"' <<<"$result"
   grep -Fq '"observation": {' "$evidence"
   grep -Fq "\"verdict\": \"$expected_verdict\"" "$evidence"
-  grep -Fq '"audit_ir_sha256":"' "$evidence"
+  grep -Fq '"audit_ir_sha256": "' "$evidence"
   grep -Fq '"report": {' "$evidence"
 }
 
