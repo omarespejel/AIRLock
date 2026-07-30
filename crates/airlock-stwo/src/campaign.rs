@@ -17,7 +17,7 @@ use crate::{
     DifferentialVerdict, IsolatedReplayError, ReplayBundleError, ReplayRequest, STWO_SOURCE_ID,
     StwoBoundaryAdapter, StwoBoundaryError, StwoWitnessAdapter, StwoWitnessError,
     StwoWitnessReplay, VerifiedReplayBundle, generate_regression_source,
-    read_verified_replay_bundle, run_isolated_replay,
+    read_verified_replay_bundle, run_isolated_replay_with_worker_digest,
 };
 
 /// Stable schema identifier for a sealed campaign.
@@ -286,7 +286,11 @@ pub fn verify_campaign(
     worker: &Path,
 ) -> Result<VerifiedCampaign, CampaignError> {
     let snapshot = read_campaign_snapshot(root, expected_airlock_commit)?;
-    fresh_boundary_replay(&snapshot.cases, worker)?;
+    fresh_boundary_replay(
+        &snapshot.cases,
+        worker,
+        &snapshot.verified.manifest.replay_worker_sha256,
+    )?;
     fresh_witness_replay(&snapshot.cases)?;
     validate_regression_bytes(&snapshot.cases.mutated, &snapshot.regression)?;
     Ok(snapshot.verified)
@@ -498,7 +502,11 @@ fn validate_cases(cases: &CampaignCases) -> Result<(), CampaignError> {
     Ok(())
 }
 
-fn fresh_boundary_replay(cases: &CampaignCases, worker: &Path) -> Result<(), CampaignError> {
+fn fresh_boundary_replay(
+    cases: &CampaignCases,
+    worker: &Path,
+    expected_worker_sha256: &str,
+) -> Result<(), CampaignError> {
     for (bundle, recorded) in [
         (HONEST_BUNDLE, &cases.honest),
         (MUTATED_BUNDLE, &cases.mutated),
@@ -506,11 +514,12 @@ fn fresh_boundary_replay(cases: &CampaignCases, worker: &Path) -> Result<(), Cam
         if !recorded.report.is_expected() {
             return Err(CampaignError::WrongRecordedCase(bundle));
         }
-        let replayed = run_isolated_replay(
+        let replayed = run_isolated_replay_with_worker_digest(
             worker,
             &recorded.report.worker_args,
             &recorded.request,
             Duration::from_millis(recorded.report.timeout_ms),
+            expected_worker_sha256,
         )?;
         if replayed != recorded.report {
             return Err(CampaignError::FreshReplayMismatch(bundle));

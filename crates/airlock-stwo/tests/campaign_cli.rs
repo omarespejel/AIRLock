@@ -115,6 +115,10 @@ fn build_sealed_campaign(parent: &Path) -> PathBuf {
 }
 
 fn verify(root: &Path) -> std::process::Output {
+    verify_with_worker(root, &worker())
+}
+
+fn verify_with_worker(root: &Path, replay_worker: &Path) -> std::process::Output {
     run(&[
         "verify-campaign",
         "--root",
@@ -122,7 +126,7 @@ fn verify(root: &Path) -> std::process::Output {
         "--expected-airlock-commit",
         TEST_COMMIT,
         "--worker",
-        as_str(&worker()),
+        as_str(replay_worker),
     ])
 }
 
@@ -244,6 +248,35 @@ fn campaign_rejects_tamper_missing_and_extra_entries() {
     let output = verify(&extra);
     assert!(!output.status.success());
     assert!(stderr(&output).contains("unexpected campaign entry"));
+
+    fs::remove_dir_all(parent).expect("remove campaign test directory");
+}
+
+#[cfg(unix)]
+#[test]
+fn campaign_rejects_mismatched_worker_before_execution() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let parent = temp_parent("worker-substitution");
+    let root = build_sealed_campaign(&parent);
+    let sentinel = parent.join("sentinel-worker.sh");
+    let marker = parent.join("worker-ran");
+    assert!(!marker.to_string_lossy().contains('\''));
+    fs::write(
+        &sentinel,
+        format!("#!/bin/sh\n: > '{}'\n", marker.display()),
+    )
+    .expect("write sentinel worker");
+    fs::set_permissions(&sentinel, fs::Permissions::from_mode(0o700))
+        .expect("make sentinel worker executable");
+
+    let output = verify_with_worker(&root, &sentinel);
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("worker digest"));
+    assert!(
+        !marker.exists(),
+        "mismatched worker executed before its digest was rejected"
+    );
 
     fs::remove_dir_all(parent).expect("remove campaign test directory");
 }

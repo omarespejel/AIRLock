@@ -30,6 +30,7 @@ pub use campaign::{
 pub use fixture::{DemoComponent, DemoProof, build_demo_fixture};
 pub use isolation::{
     IsolatedReplayError, IsolatedReplayRecord, ProcessTermination, run_isolated_replay,
+    run_isolated_replay_with_worker_digest,
 };
 pub use mutation::{MutatedProof, StwoMutationError, mutate_proof, proof_sha256};
 pub use regression::generate_regression_source;
