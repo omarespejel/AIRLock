@@ -1,8 +1,11 @@
-//! Executable AIRLock adapter for the pinned Stwo verifier boundary.
+//! Executable AIRLock integration adapter for the pinned Stwo demo.
 //!
 //! This crate generates a small honest Stwo proof, derives verifier requests
 //! from the component masks, applies proof-system-neutral mutation plans, and
 //! replays each case through both the raw PCS and ordinary framework paths.
+//! Its witness campaign intentionally composes the separate AuditIR and
+//! verifier-boundary lanes so their observations can be compared. Their
+//! coverage and verdicts remain independent.
 //! It does not establish Stwo, FRI, Fiat--Shamir, or application soundness.
 
 mod adapter;

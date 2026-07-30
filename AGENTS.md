@@ -31,11 +31,13 @@ claim.
 - `crates/airlock-boundary`: proof-neutral verifier request, observation,
   mutation-plan, outcome, and typed transcript contracts. Boundary and
   transcript result vocabularies remain separate assurance lanes.
-- `crates/airlock-stwo`: pinned executable demo adapter, OODS-sample
+- `crates/airlock-stwo`: pinned executable integration adapter, OODS-sample
   mutations, raw-PCS/framework differential replay, subprocess containment,
   deterministic replay-bundle verification, and one phase-bound
   pre-commitment witness-consistency campaign. Replay bundles remain part of
-  this verifier-boundary adapter; they do not mark evidence/provenance covered.
+  this integration adapter; they do not mark evidence/provenance covered.
+  Cross-lane comparison here does not merge AuditIR, verifier-boundary,
+  transcript, or evidence verdicts into one assurance result.
 - `scripts/demo-stwo-boundary.sh`: local honest/mutation replay, replay-bundle
   verification, and regression-generation demo. It must fail closed.
 - `crates/airlock-cli`: lane-specific commands and fail-closed exit behavior.

@@ -14,8 +14,8 @@ AIRLock is **not** a whole-system STARK soundness verifier.
 | --- | --- | --- |
 | AIR relation | `airlock air` | static gate over AuditIR |
 | Statement binding | separate | `OUT_OF_MODEL` |
-| Verifier boundary | `airlock-boundary`, `airlock-stwo` | contracts, one pinned executable demo adapter, and its replay records |
-| Witness consistency | `airlock-boundary`, `airlock-stwo` | one original-phase demo column, AuditIR evaluation, real proof regeneration, and full verifier replay when proof generation succeeds |
+| Verifier boundary | `airlock-boundary`, `airlock-stwo` | contracts, one pinned executable integration adapter, and its replay records |
+| Witness consistency | `airlock-boundary`, `airlock-stwo` | one original-phase demo column, separate AuditIR evaluation and verifier-boundary observations, real proof regeneration, and full verifier replay when proof generation succeeds |
 | Protocol / FRI / FS | `airlock-boundary` | typed transcript contract/oracle only; executable transcript capture remains `UNINSTANTIATED` |
 | Evidence / provenance | separate | `NOT_RUN`; replay bundles do not establish authorship or external provenance |
 

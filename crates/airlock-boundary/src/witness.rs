@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::{CaseKind, ScalarMutation, VerificationOutcome};
+use crate::{CaseKind, ScalarMutation, VerificationOutcome, model::is_valid_rejection_kind};
 
 /// Stable schema identifier for witness-injection artifacts.
 pub const WITNESS_SCHEMA_ID: &str = "airlock.witness-observation";
@@ -235,6 +235,20 @@ impl WitnessObservation {
             }
             (_, Some(_)) => return Err(WitnessContractError::UnexpectedVerifierOutcome),
             (_, None) => {}
+        }
+        if let ProofGenerationOutcome::Rejected { kind, .. } = &self.proof_generation
+            && !is_valid_rejection_kind(kind)
+        {
+            return Err(WitnessContractError::InvalidProofRejectionKind(
+                kind.clone(),
+            ));
+        }
+        if let Some(VerificationOutcome::Rejected { kind, .. }) = &self.verifier
+            && !is_valid_rejection_kind(kind)
+        {
+            return Err(WitnessContractError::InvalidVerifierRejectionKind(
+                kind.clone(),
+            ));
         }
         Ok(())
     }
@@ -503,6 +517,12 @@ pub enum WitnessContractError {
     /// A verifier outcome cannot exist without a generated proof.
     #[error("witness observation contains a verifier outcome without a generated proof")]
     UnexpectedVerifierOutcome,
+    /// Prover rejection category is not canonical.
+    #[error("invalid proof-generation rejection kind `{0}`")]
+    InvalidProofRejectionKind(String),
+    /// Verifier rejection category is not canonical.
+    #[error("invalid verifier rejection kind `{0}`")]
+    InvalidVerifierRejectionKind(String),
 }
 
 #[cfg(test)]
@@ -721,5 +741,48 @@ mod tests {
             WitnessFindingCode::InvalidWitnessContract
         );
         assert!(!unexpected_verifier.verdict.is_expected());
+    }
+
+    #[test]
+    fn malformed_rejection_categories_never_become_expected() {
+        let malformed_prover = observation(
+            CaseKind::Mutated,
+            false,
+            ProofGenerationOutcome::Rejected {
+                kind: " invalid category ".to_owned(),
+                message: "rejected".to_owned(),
+            },
+            None,
+        );
+        assert!(matches!(
+            malformed_prover.validate(),
+            Err(WitnessContractError::InvalidProofRejectionKind(_))
+        ));
+        let prover_report = evaluate_witness(&malformed_prover);
+        assert_eq!(prover_report.verdict, WitnessVerdict::Unsupported);
+        assert_eq!(
+            prover_report.findings[0].code,
+            WitnessFindingCode::InvalidWitnessContract
+        );
+
+        let malformed_verifier = observation(
+            CaseKind::Mutated,
+            false,
+            generated(),
+            Some(VerificationOutcome::Rejected {
+                kind: String::new(),
+                message: "rejected".to_owned(),
+            }),
+        );
+        assert!(matches!(
+            malformed_verifier.validate(),
+            Err(WitnessContractError::InvalidVerifierRejectionKind(_))
+        ));
+        let verifier_report = evaluate_witness(&malformed_verifier);
+        assert_eq!(verifier_report.verdict, WitnessVerdict::Unsupported);
+        assert_eq!(
+            verifier_report.findings[0].code,
+            WitnessFindingCode::InvalidWitnessContract
+        );
     }
 }
