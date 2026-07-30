@@ -17,7 +17,7 @@ or that a green AIRLock report establishes whole-system STARK security.
 | AuditIR schema (`airlock-ir`) | landed |
 | Static gate (`airlock-lint`) | schema/shape + parameter/phase closure + preprocessed integrity + Q8 support/functionality + encoder bound + LogUp finalize |
 | Verifier boundary contracts (`airlock-boundary`) | proof-neutral request/supply/consumption and typed transcript oracles |
-| Pinned Stwo adapter (`airlock-stwo`) | real demo proof, verifier-derived OODS requests, sample-only mutations, raw-PCS/framework replay, phase-bound pre-commitment witness injection, subprocess containment, verified replay bundles, generated Rust regression |
+| Pinned Stwo adapter (`airlock-stwo`) | real demo proof, verifier-derived OODS requests, sample-only mutations, raw-PCS/framework replay, phase-bound pre-commitment witness injection, subprocess containment, verified replay bundles, generated Rust regression, sealed campaign manifest |
 | CLI (`airlock`) | `air`, `coverage`, `schema` |
 | Stwo `AuditEvaluator` exporter | landed (`airlock-export`); concrete differential checks cover one synthetic cross-interaction AIR |
 | cvc5 / Lean | later PRs |
@@ -40,8 +40,16 @@ cargo +nightly-2026-01-15 test -p airlock-stwo --locked
 cargo +nightly-2026-01-15 test -p airlock-export \
   --test assert_evaluator_faithfulness --locked
 
-# Honest proof, adversarial rejection, verified bundles, and Rust regression.
-scripts/demo-stwo-boundary.sh
+# Honest proof, adversarial rejection, full witness records, generated Rust
+# regression, deterministic campaign manifest, and fresh replay verification.
+scripts/demo-stwo-boundary.sh /tmp/airlock-stwo-campaign
+
+# Recheck a campaign against its source commit and the pinned worker.
+cargo +nightly-2026-01-15 run -p airlock-stwo --bin airlock-stwo-demo -- \
+  verify-campaign \
+  --root /tmp/airlock-stwo-campaign \
+  --expected-airlock-commit "$(git rev-parse HEAD)" \
+  --worker target/debug/airlock-stwo-worker
 
 # Direct phase-bound witness campaigns are also exposed by the demo binary.
 cargo +nightly-2026-01-15 run -p airlock-stwo --bin airlock-stwo-demo -- \

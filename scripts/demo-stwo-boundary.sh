@@ -32,14 +32,17 @@ run_witness_case() {
   local command="$1"
   local expected_verdict="$2"
   local evidence="$3"
+  local result
 
-  "$DEMO" "$command" >"$evidence"
+  result="$("$DEMO" "$command" --output "$evidence")"
   test -s "$evidence"
-  grep -Fq '"status":"AIRLOCK_WITNESS_REPLAY_EXPECTED"' "$evidence"
-  grep -Fq "\"verdict\":\"$expected_verdict\"" "$evidence"
+  grep -Fq '"status":"AIRLOCK_WITNESS_REPLAY_EXPECTED"' <<<"$result"
+  grep -Fq "\"verdict\":\"$expected_verdict\"" <<<"$result"
+  grep -Fq '"artifact_sha256":"' <<<"$result"
+  grep -Fq '"observation": {' "$evidence"
+  grep -Fq "\"verdict\": \"$expected_verdict\"" "$evidence"
   grep -Fq '"audit_ir_sha256":"' "$evidence"
-  grep -Fq '"seed_witness_sha256":' "$evidence"
-  grep -Fq '"mutated_witness_sha256":' "$evidence"
+  grep -Fq '"report": {' "$evidence"
 }
 
 "$DEMO" honest --worker "$WORKER" --output "$HONEST"
@@ -85,5 +88,26 @@ cargo +"$TOOLCHAIN" generate-lockfile --quiet --offline --manifest-path "$CHECK_
 cargo +"$TOOLCHAIN" test --quiet --locked --offline \
   --manifest-path "$CHECK_CRATE/Cargo.toml" \
   --target-dir "$ROOT/target"
+
+if ! git diff --quiet || ! git diff --cached --quiet \
+  || [[ -n "$(git ls-files --others --exclude-standard)" ]]; then
+  printf 'FAIL: campaign source checkout is not clean\n' >&2
+  exit 1
+fi
+AIRLOCK_COMMIT="$(git rev-parse HEAD)"
+SEAL_RESULT="$(
+  "$DEMO" seal-campaign \
+    --root "$OUTPUT_ROOT" \
+    --airlock-commit "$AIRLOCK_COMMIT" \
+    --coverage "$ROOT/docs/coverage.yaml"
+)"
+grep -Fq '"status":"AIRLOCK_CAMPAIGN_SEALED"' <<<"$SEAL_RESULT"
+VERIFY_RESULT="$(
+  "$DEMO" verify-campaign \
+    --root "$OUTPUT_ROOT" \
+    --expected-airlock-commit "$AIRLOCK_COMMIT" \
+    --worker "$WORKER"
+)"
+grep -Fq '"status":"AIRLOCK_CAMPAIGN_REPLAY_MATCHED"' <<<"$VERIFY_RESULT"
 
 printf 'AIRLOCK STWO DEMO PASSED output=%s\n' "$OUTPUT_ROOT"

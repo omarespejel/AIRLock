@@ -1,0 +1,297 @@
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use airlock_stwo::CampaignManifest;
+use sha2::{Digest, Sha256};
+
+static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+const TEST_COMMIT: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const CHECKSUM_PATHS: [&str; 13] = [
+    "campaign.json",
+    "corrupt-oods-sample/SHA256SUMS",
+    "corrupt-oods-sample/report.json",
+    "corrupt-oods-sample/request.json",
+    "corrupt-oods-sample-regression.rs",
+    "coverage.yaml",
+    "honest/SHA256SUMS",
+    "honest/report.json",
+    "honest/request.json",
+    "SUMMARY.md",
+    "witness-honest.json",
+    "witness-preserving.json",
+    "witness-violating.json",
+];
+
+fn demo() -> PathBuf {
+    PathBuf::from(env!("CARGO_BIN_EXE_airlock-stwo-demo"))
+}
+
+fn worker() -> PathBuf {
+    PathBuf::from(env!("CARGO_BIN_EXE_airlock-stwo-worker"))
+}
+
+fn coverage() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/coverage.yaml")
+}
+
+fn temp_parent(label: &str) -> PathBuf {
+    let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!(
+        "airlock-campaign-{label}-{}-{counter}",
+        std::process::id()
+    ));
+    fs::create_dir(&path).expect("create campaign test directory");
+    path
+}
+
+fn as_str(path: &Path) -> &str {
+    path.to_str().expect("UTF-8 test path")
+}
+
+fn run(args: &[&str]) -> std::process::Output {
+    Command::new(demo()).args(args).output().expect("run demo")
+}
+
+fn require_success(args: &[&str]) {
+    let output = run(args);
+    assert!(
+        output.status.success(),
+        "command failed: {args:?}\nstdout={}\nstderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn build_sealed_campaign(parent: &Path) -> PathBuf {
+    let root = parent.join("campaign");
+    fs::create_dir(&root).expect("create campaign root");
+    let honest = root.join("honest");
+    let mutated = root.join("corrupt-oods-sample");
+    let regression = root.join("corrupt-oods-sample-regression.rs");
+
+    require_success(&[
+        "honest",
+        "--worker",
+        as_str(&worker()),
+        "--output",
+        as_str(&honest),
+    ]);
+    require_success(&[
+        "corrupt-sample",
+        "--worker",
+        as_str(&worker()),
+        "--output",
+        as_str(&mutated),
+    ]);
+    require_success(&[
+        "generate-regression",
+        "--bundle",
+        as_str(&mutated),
+        "--output",
+        as_str(&regression),
+    ]);
+    for (command, output) in [
+        ("witness-honest", root.join("witness-honest.json")),
+        ("witness-preserving", root.join("witness-preserving.json")),
+        ("witness-violating", root.join("witness-violating.json")),
+    ] {
+        require_success(&[command, "--output", as_str(&output)]);
+    }
+    require_success(&[
+        "seal-campaign",
+        "--root",
+        as_str(&root),
+        "--airlock-commit",
+        TEST_COMMIT,
+        "--coverage",
+        as_str(&coverage()),
+    ]);
+    root
+}
+
+fn verify(root: &Path) -> std::process::Output {
+    run(&[
+        "verify-campaign",
+        "--root",
+        as_str(root),
+        "--expected-airlock-commit",
+        TEST_COMMIT,
+        "--worker",
+        as_str(&worker()),
+    ])
+}
+
+fn copy_tree(source: &Path, destination: &Path) {
+    fs::create_dir(destination).expect("create copied root");
+    for entry in fs::read_dir(source).expect("list source") {
+        let entry = entry.expect("source entry");
+        let target = destination.join(entry.file_name());
+        if entry.file_type().expect("source type").is_dir() {
+            copy_tree(&entry.path(), &target);
+        } else {
+            fs::copy(entry.path(), target).expect("copy source file");
+        }
+    }
+}
+
+fn write_manifest(root: &Path, manifest: &CampaignManifest) {
+    let mut bytes = serde_json::to_vec_pretty(manifest).expect("serialize campaign manifest");
+    bytes.push(b'\n');
+    fs::write(root.join("campaign.json"), bytes).expect("write changed campaign manifest");
+    rewrite_top_checksums(root);
+}
+
+fn rewrite_top_checksums(root: &Path) {
+    let checksums = CHECKSUM_PATHS
+        .iter()
+        .map(|path| {
+            let bytes = fs::read(root.join(path)).expect("read checksum payload");
+            ((*path).to_owned(), format!("{:x}", Sha256::digest(bytes)))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let document = checksums
+        .into_iter()
+        .map(|(path, digest)| format!("{digest}  {path}\n"))
+        .collect::<String>();
+    fs::write(root.join("SHA256SUMS"), document).expect("rewrite top checksums");
+}
+
+fn stderr(output: &std::process::Output) -> String {
+    String::from_utf8_lossy(&output.stderr).into_owned()
+}
+
+fn text_files(root: &Path) -> Vec<PathBuf> {
+    let mut files = vec![];
+    for entry in fs::read_dir(root).expect("list campaign text files") {
+        let entry = entry.expect("campaign text entry");
+        if entry.file_type().expect("campaign text type").is_dir() {
+            files.extend(text_files(&entry.path()));
+        } else {
+            files.push(entry.path());
+        }
+    }
+    files.sort();
+    files
+}
+
+#[test]
+fn sealed_campaign_is_deterministic_replays_and_contains_no_local_path() {
+    let parent = temp_parent("baseline");
+    let root = build_sealed_campaign(&parent);
+    let second_parent = temp_parent("second-baseline");
+    let second_root = build_sealed_campaign(&second_parent);
+    let output = verify(&root);
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("AIRLOCK_CAMPAIGN_REPLAY_MATCHED"));
+
+    for path in ["campaign.json", "SHA256SUMS", "SUMMARY.md"] {
+        assert_eq!(
+            fs::read(root.join(path)).expect("first deterministic artifact"),
+            fs::read(second_root.join(path)).expect("second deterministic artifact"),
+            "{path}"
+        );
+    }
+    for path in text_files(&root) {
+        let text = fs::read_to_string(&path).expect("campaign artifact is text");
+        assert!(
+            !text.contains(as_str(&parent)),
+            "local path leaked through {}",
+            path.display()
+        );
+    }
+    fs::remove_dir_all(parent).expect("remove campaign test directory");
+    fs::remove_dir_all(second_parent).expect("remove second campaign test directory");
+}
+
+#[test]
+fn campaign_rejects_tamper_missing_and_extra_entries() {
+    let parent = temp_parent("inventory");
+    let base = build_sealed_campaign(&parent);
+
+    let tampered = parent.join("tampered");
+    copy_tree(&base, &tampered);
+    fs::write(tampered.join("SUMMARY.md"), b"changed\n").expect("tamper summary");
+    let output = verify(&tampered);
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("checksum mismatch for `SUMMARY.md`"));
+
+    let missing = parent.join("missing");
+    copy_tree(&base, &missing);
+    fs::remove_file(missing.join("SUMMARY.md")).expect("remove summary");
+    let output = verify(&missing);
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("inventory is incomplete"));
+
+    let extra = parent.join("extra");
+    copy_tree(&base, &extra);
+    fs::write(extra.join("unrequested.json"), b"{}\n").expect("write extra file");
+    let output = verify(&extra);
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("unexpected campaign entry"));
+
+    fs::remove_dir_all(parent).expect("remove campaign test directory");
+}
+
+#[test]
+fn witness_artifact_writer_never_removes_an_existing_file() {
+    let parent = temp_parent("existing-witness");
+    let output = parent.join("witness-honest.json");
+    fs::write(&output, b"keep me\n").expect("write existing witness artifact");
+
+    let result = run(&["witness-honest", "--output", as_str(&output)]);
+    assert!(!result.status.success());
+    assert_eq!(
+        fs::read(&output).expect("existing witness artifact remains"),
+        b"keep me\n"
+    );
+
+    fs::remove_dir_all(parent).expect("remove campaign test directory");
+}
+
+#[test]
+fn campaign_rejects_self_consistent_wrong_source_and_verdict() {
+    let parent = temp_parent("semantic");
+    let base = build_sealed_campaign(&parent);
+
+    let wrong_source = parent.join("wrong-source");
+    copy_tree(&base, &wrong_source);
+    let mut manifest: CampaignManifest = serde_json::from_slice(
+        &fs::read(wrong_source.join("campaign.json")).expect("read manifest"),
+    )
+    .expect("parse manifest");
+    manifest.stwo_source_id = "stwo@wrong-source".to_owned();
+    write_manifest(&wrong_source, &manifest);
+    let output = verify(&wrong_source);
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("unexpected Stwo source"));
+
+    let wrong_airlock = run(&[
+        "verify-campaign",
+        "--root",
+        as_str(&base),
+        "--expected-airlock-commit",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "--worker",
+        as_str(&worker()),
+    ]);
+    assert!(!wrong_airlock.status.success());
+    assert!(stderr(&wrong_airlock).contains("AIRLock commit mismatch"));
+
+    let wrong_verdict = parent.join("wrong-verdict");
+    copy_tree(&base, &wrong_verdict);
+    let mut manifest: CampaignManifest = serde_json::from_slice(
+        &fs::read(wrong_verdict.join("campaign.json")).expect("read manifest"),
+    )
+    .expect("parse manifest");
+    manifest.cases[0].expected_verdict = "COUNTEREXAMPLE".to_owned();
+    write_manifest(&wrong_verdict, &manifest);
+    let output = verify(&wrong_verdict);
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("case inventory differs"));
+
+    fs::remove_dir_all(parent).expect("remove campaign test directory");
+}

@@ -37,6 +37,9 @@ surfaces:
   - name: stwo-demo-witness-consistency
     status: COVERED
     note: "Scoped to the pinned transition demo's sole Phase1Original M31 column: the same pre-commitment values are evaluated by AuditIR and committed by Stwo; the honest trace and an all-row Increment mutation produce proofs accepted by the full verifier; one single-cell Increment mutation at each of the 16 physical rows is rejected by the prover. Other scalar operators, columns, and public, interaction, or reduction phases remain unsupported. This is not semantic, statement, transcript, FRI, or whole-system assurance."
+  - name: stwo-demo-campaign-artifact
+    status: COVERED
+    note: "Fixed transition-demo campaign only: complete typed witness records, deterministic source-bound manifest and summary, strict recursive inventory, bounded files, nested and top-level checksums, exact case verdicts, coverage snapshot, generated-regression reconstruction, and fresh boundary and witness replay. The bundle is unsigned and does not establish authorship, trusted time, broad Stwo coverage, or cryptographic soundness."
   - name: broad-evidence-provenance
     status: UNSUPPORTED
     note: "No signed publication, trusted timestamp, production component inventory, or cross-machine attestation."

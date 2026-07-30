@@ -26,6 +26,10 @@ adapter, and a lane-aware CLI. The boundary contract crate includes typed
 transcript-policy oracles, while the Stwo adapter derives a real demo request,
 compares raw-PCS and framework outcomes for modeled OODS-sample mutations, and
 can replay them in a bounded child process with a self-verifying replay bundle.
+The demo also persists complete typed witness replays and seals the fixed case
+inventory into a deterministic source-bound campaign manifest. Campaign
+verification checks strict inventory, nested and top-level digests, exact
+verdicts, the coverage snapshot, generated regression, and fresh execution.
 The exporter numbers columns per interaction tree, validates its mask schedule
 against `InfoEvaluator`, and has a concrete differential fixture against
 Stwo's `AssertEvaluator` and relation tracker.
