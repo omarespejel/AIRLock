@@ -205,7 +205,10 @@ campaign is expected only when the adapter assigns the typed
 or an unattributed verifier rejection remains non-green. Prover rejection,
 verifier rejection, and infrastructure-failure kinds use the same canonical
 machine-readable syntax. Infrastructure reports retain that kind as structured
-data; consumers do not need to infer it from diagnostic prose.
+data; consumers do not need to infer it from diagnostic prose. The
+`constraint_violation` cause is valid only with the canonical
+`constraints_not_satisfied` category; contradictory cause/category pairs are
+malformed rather than green.
 
 `StwoWitnessAdapter` instantiates this contract for the pinned transition demo.
 It exports the same `FrameworkEval` to AuditIR, discovers its sole original

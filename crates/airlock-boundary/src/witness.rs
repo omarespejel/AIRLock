@@ -14,6 +14,9 @@ pub const WITNESS_SCHEMA_VERSION: &str = "0.2.0";
 /// Maximum number of operations accepted by one witness-mutation plan.
 pub const MAX_WITNESS_MUTATIONS: usize = 128;
 
+/// Canonical category that may accompany a constraint-violation cause.
+pub const CONSTRAINT_VIOLATION_REJECTION_KIND: &str = "constraints_not_satisfied";
+
 /// Commitment phase owning a witness cell.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -254,6 +257,15 @@ impl WitnessObservation {
             return Err(WitnessContractError::InvalidProofRejectionKind(
                 kind.clone(),
             ));
+        }
+        if let ProofGenerationOutcome::Rejected { cause, kind, .. } = &self.proof_generation
+            && ((*cause == ProofRejectionCause::ConstraintViolation)
+                != (kind == CONSTRAINT_VIOLATION_REJECTION_KIND))
+        {
+            return Err(WitnessContractError::ProofRejectionCauseMismatch {
+                cause: *cause,
+                kind: kind.clone(),
+            });
         }
         if let ProofGenerationOutcome::InfrastructureFailure { kind, .. } = &self.proof_generation
             && !is_valid_rejection_kind(kind)
@@ -577,6 +589,14 @@ pub enum WitnessContractError {
     /// Prover rejection category is not canonical.
     #[error("invalid proof-generation rejection kind `{0}`")]
     InvalidProofRejectionKind(String),
+    /// Prover rejection cause and category contradict each other.
+    #[error("proof-generation rejection cause `{cause:?}` contradicts kind `{kind}`")]
+    ProofRejectionCauseMismatch {
+        /// Supplied typed cause.
+        cause: ProofRejectionCause,
+        /// Supplied rejection category.
+        kind: String,
+    },
     /// Infrastructure failure category is not canonical.
     #[error("invalid infrastructure failure kind `{0}`")]
     InvalidInfrastructureFailureKind(String),
@@ -938,5 +958,39 @@ mod tests {
             WitnessFindingCode::Unsupported
         );
         assert!(!verifier_report.verdict.is_expected());
+    }
+
+    #[test]
+    fn rejection_cause_and_category_must_agree() {
+        for (cause, kind) in [
+            (ProofRejectionCause::ConstraintViolation, "resource_limit"),
+            (
+                ProofRejectionCause::Other,
+                CONSTRAINT_VIOLATION_REJECTION_KIND,
+            ),
+        ] {
+            let contradictory = observation(
+                CaseKind::Mutated,
+                false,
+                ProofGenerationOutcome::Rejected {
+                    cause,
+                    kind: kind.to_owned(),
+                    message: "contradictory attribution".to_owned(),
+                },
+                None,
+            );
+
+            assert!(matches!(
+                contradictory.validate(),
+                Err(WitnessContractError::ProofRejectionCauseMismatch { .. })
+            ));
+            let report = evaluate_witness(&contradictory);
+            assert_eq!(report.verdict, WitnessVerdict::Unsupported);
+            assert_eq!(
+                report.findings[0].code,
+                WitnessFindingCode::InvalidWitnessContract
+            );
+            assert!(!report.verdict.is_expected());
+        }
     }
 }

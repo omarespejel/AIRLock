@@ -4,9 +4,10 @@ use std::collections::BTreeMap;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use airlock_boundary::{
-    CaseKind, MAX_WITNESS_MUTATIONS, ProofGenerationOutcome, ProofRejectionCause, ScalarMutation,
-    WITNESS_SCHEMA_ID, WITNESS_SCHEMA_VERSION, WitnessCellPath, WitnessMutationOperation,
-    WitnessMutationPlan, WitnessObservation, WitnessPhase, WitnessReport, evaluate_witness,
+    CONSTRAINT_VIOLATION_REJECTION_KIND, CaseKind, MAX_WITNESS_MUTATIONS, ProofGenerationOutcome,
+    ProofRejectionCause, ScalarMutation, WITNESS_SCHEMA_ID, WITNESS_SCHEMA_VERSION,
+    WitnessCellPath, WitnessMutationOperation, WitnessMutationPlan, WitnessObservation,
+    WitnessPhase, WitnessReport, evaluate_witness,
 };
 use airlock_export::{ConcreteAssignment, ExportAnnotations, constraints_hold, export_component};
 use airlock_ir::{AuditManifest, ColumnKind, CommitmentPhase, M31_P, SemanticType, hash_manifest};
@@ -254,7 +255,7 @@ impl StwoWitnessAdapter {
             Ok(Err(DemoFixtureBuildError::ConstraintsNotSatisfied)) => (
                 ProofGenerationOutcome::Rejected {
                     cause: ProofRejectionCause::ConstraintViolation,
-                    kind: "constraints_not_satisfied".to_owned(),
+                    kind: CONSTRAINT_VIOLATION_REJECTION_KIND.to_owned(),
                     message: "Stwo prover rejected the committed witness".to_owned(),
                 },
                 None,
