@@ -3,9 +3,19 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STWO_DIR="${AIRLOCK_STWO_DIR:-$ROOT/../stwo}"
-PATCH="$ROOT/patches/stwo-relation-entry-accessors.patch"
+ACCESSOR_PATCH="$ROOT/patches/stwo-relation-entry-accessors.patch"
+CONSUMPTION_PATCH="$ROOT/patches/stwo-consumption-sink.patch"
 REQUIRED_COMMIT="f0d79b0fad440dcb0aaf1e20470fdbb37993ea2a"
-TARGET="crates/constraint-framework/src/lib.rs"
+REQUIRED_ACCESSOR_PATCH_SHA256="7782a94a63a40e86b760d76dc37d2a6833921c5dfad5073b62972d640b90742a"
+REQUIRED_CONSUMPTION_PATCH_SHA256="be3708dd459c3e17caa615ffcfc034b6b20b9ae4a996327f8ff8f2464145b3b3"
+REQUIRED_SOURCE_ID="stwo@$REQUIRED_COMMIT+patches:accessor=$REQUIRED_ACCESSOR_PATCH_SHA256;consumption=$REQUIRED_CONSUMPTION_PATCH_SHA256"
+SOURCE_ID_FILE="$ROOT/crates/airlock-stwo/src/lib.rs"
+ACCESSOR_TARGET="crates/constraint-framework/src/lib.rs"
+CONSUMPTION_TARGETS=(
+  crates/stwo/Cargo.toml
+  crates/stwo/src/core/pcs/mod.rs
+  crates/stwo/src/core/pcs/verifier.rs
+)
 REQUIRED_PATHS=(
   Cargo.toml
   Cargo.lock
@@ -15,8 +25,9 @@ REQUIRED_PATHS=(
   crates/examples/src/lib.rs
   crates/examples/src/wide_fibonacci
 )
-TMP_PATCH="$(mktemp "${TMPDIR:-/tmp}/airlock-stwo-patch.XXXXXX")"
-trap 'rm -f "$TMP_PATCH"' EXIT
+TMP_ACCESSOR_PATCH="$(mktemp "${TMPDIR:-/tmp}/airlock-stwo-accessor-patch.XXXXXX")"
+TMP_CONSUMPTION_PATCH="$(mktemp "${TMPDIR:-/tmp}/airlock-stwo-consumption-patch.XXXXXX")"
+trap 'rm -f "$TMP_ACCESSOR_PATCH" "$TMP_CONSUMPTION_PATCH"' EXIT
 
 fail() {
     printf 'FAIL: %s\n' "$*" >&2
@@ -30,7 +41,14 @@ while IFS= read -r variable; do
 done < <(git rev-parse --local-env-vars)
 
 [[ -d "$STWO_DIR/.git" ]] || fail "missing sibling Stwo checkout at $STWO_DIR; run scripts/setup-stwo.sh"
-[[ -f "$PATCH" ]] || fail "missing checked accessor patch at $PATCH"
+[[ -f "$ACCESSOR_PATCH" ]] || fail "missing checked accessor patch at $ACCESSOR_PATCH"
+[[ -f "$CONSUMPTION_PATCH" ]] || fail "missing checked consumption patch at $CONSUMPTION_PATCH"
+[[ "$(shasum -a 256 "$ACCESSOR_PATCH" | awk '{print $1}')" == "$REQUIRED_ACCESSOR_PATCH_SHA256" ]] ||
+  fail "accessor patch SHA-256 does not match the bound source identity"
+[[ "$(shasum -a 256 "$CONSUMPTION_PATCH" | awk '{print $1}')" == "$REQUIRED_CONSUMPTION_PATCH_SHA256" ]] ||
+  fail "consumption patch SHA-256 does not match the bound source identity"
+grep -Fqx "pub const STWO_SOURCE_ID: &str = \"$REQUIRED_SOURCE_ID\";" "$SOURCE_ID_FILE" ||
+  fail "STWO_SOURCE_ID does not bind the required baseline and patch digests"
 
 actual_commit="$(git -C "$STWO_DIR" rev-parse HEAD)"
 git -C "$STWO_DIR" cat-file -e "$REQUIRED_COMMIT^{commit}" 2>/dev/null || fail \
@@ -48,14 +66,24 @@ if ! git -C "$STWO_DIR" diff --cached --quiet; then
 fi
 
 status="$(git -C "$STWO_DIR" status --porcelain --untracked-files=all)"
-expected_status=" M $TARGET"
+expected_status="$(printf ' M %s\n' \
+  "$ACCESSOR_TARGET" \
+  "${CONSUMPTION_TARGETS[@]}")"
+expected_status="${expected_status%$'\n'}"
 [[ "$status" == "$expected_status" ]] || fail \
   "unexpected Stwo working tree state; expected only '$expected_status', got '${status:-clean}'"
 
-git -C "$STWO_DIR" diff --no-ext-diff --binary --unified=1 -- "$TARGET" >"$TMP_PATCH"
-if ! cmp -s "$PATCH" "$TMP_PATCH"; then
-  fail "Stwo accessor diff does not match $PATCH"
+git -C "$STWO_DIR" diff --no-ext-diff --binary --unified=1 --abbrev=8 -- \
+  "$ACCESSOR_TARGET" >"$TMP_ACCESSOR_PATCH"
+if ! cmp -s "$ACCESSOR_PATCH" "$TMP_ACCESSOR_PATCH"; then
+  fail "Stwo accessor diff does not match $ACCESSOR_PATCH"
 fi
 
-printf 'PASS: Stwo dependency and held-out target sources at %s match upstream baseline %s plus the checked accessor patch\n' \
+git -C "$STWO_DIR" diff --no-ext-diff --binary --unified=0 --abbrev=8 -- \
+  "${CONSUMPTION_TARGETS[@]}" >"$TMP_CONSUMPTION_PATCH"
+if ! cmp -s "$CONSUMPTION_PATCH" "$TMP_CONSUMPTION_PATCH"; then
+  fail "Stwo consumption-sink diff does not match $CONSUMPTION_PATCH"
+fi
+
+printf 'PASS: Stwo dependency and held-out target sources at %s match upstream baseline %s plus the checked accessor and consumption patches\n' \
   "$actual_commit" "$REQUIRED_COMMIT"
