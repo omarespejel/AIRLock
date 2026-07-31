@@ -6,6 +6,7 @@
 #![deny(missing_docs)]
 #![forbid(unsafe_code)]
 
+mod confinement;
 mod encoder;
 mod logup;
 mod lookup;
@@ -14,9 +15,13 @@ mod preprocessed;
 mod runner;
 mod structure;
 
+pub use confinement::ConfinementCertificate;
 pub use encoder::lint_encoder_bounds;
 pub use logup::lint_logup_finalization;
-pub use lookup::{lint_lookup_functionality, lint_table_multiplicity_support};
+pub use lookup::{
+    ConfinementEvidence, TableMultiplicityObligation, lint_lookup_functionality,
+    lint_table_multiplicity_support, table_multiplicity_obligations,
+};
 pub use parameter::lint_parameter_contract;
 pub use preprocessed::lint_preprocessed_contract;
 pub use runner::{LintOptions, lint_component, lint_manifest};

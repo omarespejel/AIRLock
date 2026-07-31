@@ -7,53 +7,154 @@ use airlock_ir::{
     RowSupport, Severity,
 };
 
+use crate::confinement::{ConfinementCertificate, confinement_certificate};
+
 /// Rows where a table-side multiplicity may be nonzero must lie inside semantic support.
 ///
 /// This is the Q8 golden class: witness-controlled `table_mult` free on padding rows whose
 /// preprocessed `(key, value)` is outside the semantic table.
 pub fn lint_table_multiplicity_support(component: &ComponentManifest) -> Vec<Finding> {
     let mut findings = Vec::new();
+    for obligation in table_multiplicity_obligations(component) {
+        match &obligation.evidence {
+            ConfinementEvidence::NoSemanticMetadata => findings.push(Finding {
+                code: FindingCode::Other,
+                severity: Severity::Medium,
+                component: Some(component.name.clone()),
+                message: format!(
+                    "table relation `{}` lacks recoverable semantic support metadata; cannot prove multiplicity is confined",
+                    obligation.relation
+                ),
+                related: vec![obligation.relation.clone()],
+            }),
+            ConfinementEvidence::Unproven => findings.push(Finding {
+                code: FindingCode::TableMultiplicityOutsideSemanticSupport,
+                severity: Severity::Critical,
+                component: Some(component.name.clone()),
+                message: format!(
+                    "table relation `{}` has no constraint confining multiplicity to semantic support [0, {}); \
+                     declared row support `{}` is a claim and cannot discharge it",
+                    obligation.relation,
+                    obligation.semantic_length,
+                    describe_row_support(&obligation.declared_row_support)
+                ),
+                related: vec![obligation.relation.clone()],
+            }),
+            ConfinementEvidence::NoPaddingRows
+            | ConfinementEvidence::ConstantZeroMultiplicity
+            | ConfinementEvidence::Certified(_) => {}
+        }
+    }
+    findings
+}
+
+/// Why a table multiplicity is, or is not, confined to semantic support.
+///
+/// Only the last three variants discharge the obligation, and each rests on
+/// observed data. A declared `row_support` is never evidence.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ConfinementEvidence {
+    /// Semantic support could not be recovered from preprocessed table data.
+    NoSemanticMetadata,
+    /// No evidence confines the multiplicity to semantic support.
+    Unproven,
+    /// The physical domain has no rows outside semantic support.
+    NoPaddingRows,
+    /// The multiplicity expression is the literal zero.
+    ConstantZeroMultiplicity,
+    /// An AIR constraint forces the multiplicity to zero on every padding row.
+    Certified(ConfinementCertificate),
+}
+
+/// One table-multiplicity confinement obligation and the evidence for it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TableMultiplicityObligation {
+    /// Relation the obligation belongs to.
+    pub relation: String,
+    /// Semantic support length derived from preprocessed table data.
+    pub semantic_length: u64,
+    /// Physical domain length.
+    pub physical_length: u64,
+    /// Declared row support, recorded as a claim rather than as evidence.
+    pub declared_row_support: RowSupport,
+    /// Evidence for or against confinement.
+    pub evidence: ConfinementEvidence,
+}
+
+impl TableMultiplicityObligation {
+    /// Whether observed data confines the multiplicity to semantic support.
+    pub fn is_confined(&self) -> bool {
+        matches!(
+            self.evidence,
+            ConfinementEvidence::NoPaddingRows
+                | ConfinementEvidence::ConstantZeroMultiplicity
+                | ConfinementEvidence::Certified(_)
+        )
+    }
+
+    /// Certificate that discharged the obligation, when one exists.
+    pub fn certificate(&self) -> Option<&ConfinementCertificate> {
+        match &self.evidence {
+            ConfinementEvidence::Certified(certificate) => Some(certificate),
+            _ => None,
+        }
+    }
+}
+
+/// Derive every table-multiplicity confinement obligation in a component.
+///
+/// Semantic support comes only from preprocessed table data; the relation's
+/// declared `row_support` is recorded for reporting but never consulted when
+/// deciding whether the obligation is discharged.
+pub fn table_multiplicity_obligations(
+    component: &ComponentManifest,
+) -> Vec<TableMultiplicityObligation> {
     let prep: BTreeMap<&str, &PreprocessedColumn> = component
         .preprocessed
         .iter()
         .map(|p| (p.id.as_str(), p))
         .collect();
 
-    for relation in component
+    component
         .relations
         .iter()
-        .filter(|r| r.role == RelationRole::Table)
-    {
-        let Some(support) = semantic_support_for_table_relation(component, relation, &prep) else {
-            findings.push(Finding {
-                code: FindingCode::Other,
-                severity: Severity::Medium,
-                component: Some(component.name.clone()),
-                message: format!(
-                    "table relation `{}` lacks recoverable semantic support metadata; cannot prove multiplicity is confined",
-                    relation.relation
-                ),
-                related: vec![relation.relation.clone()],
-            });
-            continue;
-        };
-
-        let semantic_length = support.semantic_length;
-        if multiplicity_may_escape_support(&relation.row_support, &relation.multiplicity, &support)
-        {
-            findings.push(Finding {
-                code: FindingCode::TableMultiplicityOutsideSemanticSupport,
-                severity: Severity::Critical,
-                component: Some(component.name.clone()),
-                message: format!(
-                    "table relation `{}` allows nonzero multiplicity outside semantic support [0, {})",
-                    relation.relation, semantic_length
-                ),
-                related: vec![relation.relation.clone()],
-            });
-        }
-    }
-    findings
+        .filter(|relation| relation.role == RelationRole::Table)
+        .map(|relation| {
+            let Some(support) = semantic_support_for_table_relation(component, relation, &prep)
+            else {
+                return TableMultiplicityObligation {
+                    relation: relation.relation.clone(),
+                    semantic_length: 0,
+                    physical_length: component.domain_size,
+                    declared_row_support: relation.row_support.clone(),
+                    evidence: ConfinementEvidence::NoSemanticMetadata,
+                };
+            };
+            let evidence = if support.physical_length <= support.semantic_length {
+                ConfinementEvidence::NoPaddingRows
+            } else if matches!(relation.multiplicity, BaseExpr::Const { value: 0 }) {
+                ConfinementEvidence::ConstantZeroMultiplicity
+            } else {
+                match confinement_certificate(
+                    component,
+                    relation,
+                    &prep,
+                    support.semantic_length,
+                    support.physical_length,
+                ) {
+                    Some(certificate) => ConfinementEvidence::Certified(certificate),
+                    None => ConfinementEvidence::Unproven,
+                }
+            };
+            TableMultiplicityObligation {
+                relation: relation.relation.clone(),
+                semantic_length: support.semantic_length,
+                physical_length: support.physical_length,
+                declared_row_support: relation.row_support.clone(),
+                evidence,
+            }
+        })
+        .collect()
 }
 
 #[derive(Clone, Copy)]
@@ -62,21 +163,16 @@ struct SemanticSupport {
     physical_length: u64,
 }
 
+/// Semantic support is derived only from preprocessed table data.
+///
+/// It must never be read from `relation.row_support`: that is the declaration
+/// under test, and using it as the yardstick makes the escape check compare a
+/// value against itself.
 fn semantic_support_for_table_relation<'a>(
     component: &'a ComponentManifest,
     relation: &airlock_ir::RelationEntry,
     prep: &BTreeMap<&str, &'a PreprocessedColumn>,
 ) -> Option<SemanticSupport> {
-    if let RowSupport::Range { start, end } = &relation.row_support
-        && *start == 0
-        && *end > 0
-    {
-        return Some(SemanticSupport {
-            semantic_length: *end,
-            physical_length: component.domain_size,
-        });
-    }
-
     for expr in &relation.tuple {
         let BaseExpr::Column { id, .. } = expr else {
             continue;
@@ -91,29 +187,12 @@ fn semantic_support_for_table_relation<'a>(
     None
 }
 
-fn multiplicity_may_escape_support(
-    row_support: &RowSupport,
-    multiplicity: &BaseExpr,
-    support: &SemanticSupport,
-) -> bool {
-    if support.physical_length <= support.semantic_length {
-        return false;
-    }
-    if matches!(multiplicity, BaseExpr::Const { value: 0 }) {
-        return false;
-    }
-    match row_support {
-        RowSupport::All => true,
-        // Overlaps any padding index: end past semantic length and start before physical end.
-        RowSupport::Range { start, end } => {
-            *end > support.semantic_length && *start < support.physical_length
-        }
-        RowSupport::Classes { classes } => {
-            classes.is_empty()
-                || classes
-                    .iter()
-                    .any(|c| matches!(c, airlock_ir::RowClass::Padding))
-        }
+/// Render a declared row support for a finding message.
+fn describe_row_support(support: &RowSupport) -> String {
+    match support {
+        RowSupport::All => "all".into(),
+        RowSupport::Range { start, end } => format!("[{start}, {end})"),
+        RowSupport::Classes { classes } => format!("{classes:?}"),
     }
 }
 
@@ -148,13 +227,22 @@ pub fn lint_lookup_functionality(component: &ComponentManifest) -> Vec<Finding> 
         let Some(value_vals) = values.values.as_ref() else {
             continue;
         };
-        let semantic = keys.semantic_length.min(values.semantic_length);
+        // Declared lengths are untrusted: `lint_preprocessed_contract` reports an
+        // inconsistent `semantic_length`/`physical_length` pair, but every lint still
+        // runs, so clamp both to the concrete value arrays before either can drive
+        // indexing. Without this, a manifest declaring `semantic_length` above the
+        // supplied value count reaches the row loops below and aborts the process,
+        // destroying the findings already computed.
+        let bound = (key_vals.len() as u64).min(value_vals.len() as u64);
+        let semantic = keys
+            .semantic_length
+            .min(values.semantic_length)
+            .min(bound);
         let physical = keys
             .physical_length
             .max(values.physical_length)
             .max(component.domain_size)
-            .min(key_vals.len() as u64)
-            .min(value_vals.len() as u64);
+            .min(bound);
 
         let allowed_end = match &relation.row_support {
             RowSupport::Range { end, .. } => (*end).min(physical),

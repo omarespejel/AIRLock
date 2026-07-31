@@ -4,7 +4,7 @@
   "airlock_version": "0.1.0",
   "components": [
     {
-      "name": "stage-a-nonlinear-q8-fixed",
+      "name": "stage-a-nonlinear-q8-annotation-only",
       "log_size": 5,
       "domain_size": 32,
       "columns": [
@@ -55,53 +55,10 @@
               "end": 16
             }
           }
-        },
-        {
-          "id": "table_active",
-          "name": "table_active",
-          "commitment_phase": "phase0_public",
-          "offsets": [
-            0
-          ],
-          "kind": "preprocessed",
-          "semantic_type": "selector"
         }
       ],
       "parameters": [],
-      "constraints": [
-        {
-          "id": "q8-table-mult-confinement",
-          "expression": {
-            "op": "from_base",
-            "inner": {
-              "op": "mul",
-              "lhs": {
-                "op": "add",
-                "lhs": {
-                  "op": "const",
-                  "value": 1
-                },
-                "rhs": {
-                  "op": "neg",
-                  "inner": {
-                    "op": "column",
-                    "id": "table_active",
-                    "offset": 0
-                  }
-                }
-              },
-              "rhs": {
-                "op": "column",
-                "id": "table_mult",
-                "offset": 0
-              }
-            }
-          },
-          "row_support": "all",
-          "source_location": "fixtures::q8",
-          "semantic_claim": "table multiplicity vanishes off semantic support"
-        }
-      ],
+      "constraints": [],
       "relations": [
         {
           "relation": "SiLU",
@@ -213,46 +170,6 @@
             0,
             0
           ]
-        },
-        {
-          "id": "table_active",
-          "semantic_length": 16,
-          "physical_length": 32,
-          "values": [
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0
-          ],
-          "values_hash": "1dc1543e1875b2e4b78111da46479964596b0eeb420abbe7a533c382c8998411"
         }
       ],
       "declared_max_constraint_log_degree_bound": 5,

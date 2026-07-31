@@ -25,6 +25,8 @@ const LOG_SIZE: u32 = 5; // 32-row domain
 
 struct SiluTableAir;
 
+struct ConstrainedSiluTableAir;
+
 struct IntermediateAir;
 
 struct OversizedAir;
@@ -66,6 +68,41 @@ impl FrameworkEval for SiluTableAir {
         });
         let mult = eval.next_trace_mask();
         // Table/yield side uses negative multiplicity convention.
+        let multiplicity = -E::EF::from(mult);
+        eval.add_to_relation(RelationEntry::new(
+            &SiLU::dummy(),
+            multiplicity,
+            &[code, silu],
+        ));
+        eval.finalize_logup();
+        eval
+    }
+}
+
+impl FrameworkEval for ConstrainedSiluTableAir {
+    fn log_size(&self) -> u32 {
+        LOG_SIZE
+    }
+
+    fn max_constraint_log_degree_bound(&self) -> u32 {
+        LOG_SIZE + 1
+    }
+
+    fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
+        let code = eval.get_preprocessed_column(PreProcessedColumnId {
+            id: "table_code".into(),
+        });
+        let silu = eval.get_preprocessed_column(PreProcessedColumnId {
+            id: "table_silu".into(),
+        });
+        let active = eval.get_preprocessed_column(PreProcessedColumnId {
+            id: "table_active".into(),
+        });
+        let mult = eval.next_trace_mask();
+        // The actual repair: force the multiplicity to zero wherever the
+        // verifier-owned selector is zero, i.e. on every padding row. This is
+        // what an annotation cannot do.
+        eval.add_constraint((E::F::one() - active) * mult.clone());
         let multiplicity = -E::EF::from(mult);
         eval.add_to_relation(RelationEntry::new(
             &SiLU::dummy(),
@@ -305,6 +342,27 @@ fn annotations(vulnerable: bool) -> ExportAnnotations {
     }
 }
 
+/// Annotations for `ConstrainedSiluTableAir`, which additionally reads the
+/// verifier-owned `table_active` selector. The exporter rejects an annotation the
+/// AIR never observes, so this cannot be folded into `annotations`.
+fn constrained_annotations() -> ExportAnnotations {
+    let mut ann = annotations(false);
+    let actives: Vec<u32> = (0..(1u64 << LOG_SIZE))
+        .map(|row| u32::from(row < SEMANTIC))
+        .collect();
+    ann.preprocessed.insert(
+        "table_active".into(),
+        PreprocessedAttachment {
+            semantic_length: SEMANTIC,
+            physical_length: 1 << LOG_SIZE,
+            values: Some(actives),
+            generator_id: None,
+            semantic_type: SemanticType::Selector,
+        },
+    );
+    ann
+}
+
 #[test]
 fn required_stwo_baseline_matches_documented_commit() {
     assert_eq!(
@@ -431,16 +489,46 @@ fn export_rejects_domains_smaller_than_stwo_supports() {
 }
 
 #[test]
-fn export_fixed_silu_table_passes_q8_lints() {
+fn export_annotation_only_narrowing_does_not_pass_q8_lints() {
+    // `SiluTableAir` has no constraints and an unconstrained multiplicity. Only
+    // the exported `row_support` annotation differs from the vulnerable case, so
+    // the obligation must stay undischarged on the real export path too.
     let air = SiluTableAir;
     let manifest = export_component(&air, annotations(false)).expect("export");
+    let findings = lint_manifest(&manifest, &LintOptions::default());
+    assert!(
+        findings
+            .iter()
+            .any(|f| f.code == FindingCode::TableMultiplicityOutsideSemanticSupport),
+        "annotation-only narrowing must not discharge the Q8 obligation: {findings:?}"
+    );
+}
+
+#[test]
+fn export_constrained_silu_table_passes_q8_lints() {
+    // Same relation, same annotations, but the AIR now carries
+    // `(1 - table_active) * mult = 0`. The certificate must come from that
+    // constraint.
+    let air = ConstrainedSiluTableAir;
+    let manifest = export_component(&air, constrained_annotations()).expect("export");
     let findings = lint_manifest(&manifest, &LintOptions::default());
     assert!(
         findings.iter().all(|f| {
             f.code != FindingCode::TableMultiplicityOutsideSemanticSupport
                 && f.code != FindingCode::NonfunctionalLookupKey
         }),
-        "fixed export should not raise Q8 findings: {findings:?}"
+        "a constrained export should discharge the Q8 obligation: {findings:?}"
+    );
+
+    let obligations = airlock_lint::table_multiplicity_obligations(&manifest.components[0]);
+    let silu = obligations
+        .iter()
+        .find(|o| o.relation == "SiLU")
+        .expect("SiLU obligation");
+    assert!(
+        silu.certificate().is_some(),
+        "discharge must be attributable to a constraint, not metadata: {:?}",
+        silu.evidence
     );
 }
 

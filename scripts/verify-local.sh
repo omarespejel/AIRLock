@@ -68,13 +68,22 @@ FIXED_OUTPUT="$TMP_DIR/q8-fixed.log"
 cargo +"$TOOLCHAIN" run --quiet --locked -p airlock-cli -- air \
   --manifest fixtures/seeded/q8_padded_table_fixed.json >"$FIXED_OUTPUT" 2>&1
 grep -Fq 'verdict=StaticPass release=BLOCKED' "$FIXED_OUTPUT"
-printf 'PASS: fixed Q8 fixture passes AIR lint while release remains blocked\n'
+printf 'PASS: constrained Q8 fixture passes AIR lint while release remains blocked\n'
 
 run_expected_failure \
   q8-vulnerable \
   'TableMultiplicityOutsideSemanticSupport' \
   cargo +"$TOOLCHAIN" run --quiet --locked -p airlock-cli -- air \
   --manifest fixtures/seeded/q8_padded_table_vulnerable.json
+
+# Narrowing declared row support adds no constraint, so the same malicious
+# witness remains available. The obligation must stay undischarged: an
+# annotation may narrow a claim but can never establish one.
+run_expected_failure \
+  q8-annotation-only \
+  'is a claim and cannot discharge it' \
+  cargo +"$TOOLCHAIN" run --quiet --locked -p airlock-cli -- air \
+  --manifest fixtures/seeded/q8_padded_table_annotation_only.json
 
 run_expected_failure \
   encoder-mismatch \
