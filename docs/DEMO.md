@@ -81,6 +81,8 @@ commitments, decommitment hash witnesses, queried values, and the PoW nonce.
 This generic command is outside the fixed eight-case sealed campaign. It writes
 a verified bundle for non-green outcomes, then exits unsuccessfully so a panic,
 counterexample, timeout, or unsupported case cannot become a release pass.
+Request-file replay requires Unix atomic no-follow opening and fails closed on
+other hosts.
 
 ## Evidence
 

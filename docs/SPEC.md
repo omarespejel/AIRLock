@@ -333,7 +333,8 @@ its producer.
 bounded `ReplayRequest` JSON command, demo and held-out witness replay, bundle
 verification, and path-independent Rust-regression generation. The generic
 command rejects oversized, unknown-field, wrong-source, and wrong-target
-requests before worker launch. Run commands
+requests before worker launch. Request-file replay requires Unix atomic
+no-follow opening and fails closed on other hosts. Run commands
 exit successfully only when the replay bundle is internally consistent and its
 verdict matches the requested case. The verify command additionally requires a
 fresh execution with the supplied worker to reproduce the stored record
