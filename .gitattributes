@@ -1,0 +1,5 @@
+# A patch file's context lines must reproduce the upstream bytes exactly, so a
+# blank context line is required trailing whitespace rather than an error.
+# Stripping it would make `git apply` reject the patch, which would silently
+# break the pinned Stwo checkout. Exclude these paths from whitespace checks.
+patches/*.patch -whitespace
