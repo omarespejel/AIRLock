@@ -6,8 +6,8 @@ use std::time::Duration;
 
 use airlock_boundary::{BoundaryPath, MutationOperation};
 use airlock_stwo::{
-    DifferentialVerdict, ReplayRequest, StwoBoundaryAdapter, read_verified_replay_bundle,
-    run_isolated_replay, write_replay_bundle,
+    DifferentialVerdict, ProcessTermination, ReplayRequest, StwoBoundaryAdapter,
+    read_verified_replay_bundle, run_isolated_replay, write_replay_bundle,
 };
 
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -298,6 +298,38 @@ fn replay_command_rejects_unknown_and_oversized_requests_before_execution() {
     assert!(!oversized.status.success());
     assert!(String::from_utf8_lossy(&oversized.stderr).contains("exceeds the 1 MiB limit"));
     assert!(!oversized_bundle.exists());
+
+    let unsupported_request = parent.join("unsupported.json");
+    let unsupported_bundle = parent.join("unsupported-bundle");
+    let request = ReplayRequest::mutation(
+        "unsupported-path",
+        vec![MutationOperation::Truncate {
+            path: BoundaryPath::new("fri.query_positions", vec![]),
+            new_len: 0,
+        }],
+    );
+    fs::write(
+        &unsupported_request,
+        serde_json::to_vec(&request).expect("encode unsupported request"),
+    )
+    .expect("write request");
+    let unsupported = run(&[
+        "replay",
+        "--request",
+        as_str(&unsupported_request),
+        "--worker",
+        as_str(&worker()),
+        "--output",
+        as_str(&unsupported_bundle),
+    ]);
+    assert!(!unsupported.status.success());
+    let retained =
+        read_verified_replay_bundle(&unsupported_bundle).expect("retained unsupported-path bundle");
+    assert!(matches!(
+        retained.report.termination,
+        ProcessTermination::ExitFailure { code: Some(2) }
+    ));
+    assert!(retained.report.replay.is_none());
 
     fs::remove_dir_all(parent).expect("remove CLI test directory");
 }

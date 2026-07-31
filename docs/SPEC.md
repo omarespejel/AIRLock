@@ -193,7 +193,8 @@ The executable proof-mutation grammar is exact:
 
 Container edits are drop, truncate, duplicate, and swap. Scalar edits are
 zero, one, maximum, increment, decrement, and bit flip. Every other path or
-index shape returns typed `UNSUPPORTED`; it cannot count as exercised coverage.
+index shape returns a typed adapter error. Isolated replay records the worker
+failure and remains non-green; it cannot count as exercised coverage.
 
 The adapter executes drop, truncate, duplicate, and swap operations against a
 real verifier-requested two-sample column. A byte-identical swap is rejected as
