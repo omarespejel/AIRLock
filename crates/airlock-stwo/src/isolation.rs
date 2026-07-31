@@ -271,6 +271,7 @@ fn run_isolated_replay_inner(
     let mut child = command
         .spawn()
         .map_err(|error| IsolatedReplayError::Spawn(error.to_string()))?;
+    let process_group_id = child.id();
     let mut child_stdin = child
         .stdin
         .take()
@@ -292,23 +293,34 @@ fn run_isolated_replay_inner(
     let stderr_reader = thread::spawn(move || capture_stream(child_stderr));
 
     let started = Instant::now();
+    let mut observed_status = None;
     let (status, timed_out) = loop {
-        if let Some(status) = child
-            .try_wait()
-            .map_err(|error| IsolatedReplayError::Wait(error.to_string()))?
+        if observed_status.is_none() {
+            observed_status = child
+                .try_wait()
+                .map_err(|error| IsolatedReplayError::Wait(error.to_string()))?;
+        }
+        if writer.is_finished()
+            && stdout_reader.is_finished()
+            && stderr_reader.is_finished()
+            && let Some(status) = observed_status
         {
             break (status, false);
         }
         if started.elapsed() >= timeout {
-            // Group first, then the direct child. The group signal is best effort;
-            // the child kill below is authoritative for this handle.
-            terminate_process_group(child.id());
-            child
-                .kill()
-                .map_err(|error| IsolatedReplayError::Kill(error.to_string()))?;
-            let status = child
-                .wait()
-                .map_err(|error| IsolatedReplayError::Wait(error.to_string()))?;
+            // Retain and signal the original process group even after the leader
+            // exits. A descendant may still own one of the captured pipes.
+            terminate_process_group(process_group_id)?;
+            let status = if let Some(status) = observed_status {
+                status
+            } else {
+                child
+                    .kill()
+                    .map_err(|error| IsolatedReplayError::Kill(error.to_string()))?;
+                child
+                    .wait()
+                    .map_err(|error| IsolatedReplayError::Wait(error.to_string()))?
+            };
             break (status, true);
         }
         thread::sleep(POLL_INTERVAL);
@@ -574,20 +586,27 @@ pub enum IsolatedReplayError {
 /// Signal the worker's whole process group on timeout.
 ///
 /// The worker is spawned with `process_group(0)`, so its process-group id equals
-/// its process id and a negative `kill` argument targets every descendant. This
-/// is best effort: it bounds the wall clock in the presence of grandchildren, and
-/// it is not an OS sandbox.
+/// its process id and a negative process-group target reaches every descendant.
+/// This bounds captured-pipe drainage in the presence of grandchildren; it is
+/// not an OS sandbox.
 #[cfg(unix)]
-fn terminate_process_group(pid: u32) {
-    let _ = Command::new("/bin/kill")
-        .arg("-KILL")
-        .arg(format!("-{pid}"))
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
+fn terminate_process_group(pid: u32) -> Result<(), IsolatedReplayError> {
+    use nix::errno::Errno;
+    use nix::sys::signal::{Signal, killpg};
+    use nix::unistd::Pid;
+
+    let pid = i32::try_from(pid)
+        .map_err(|error| IsolatedReplayError::Kill(format!("invalid process-group id: {error}")))?;
+    match killpg(Pid::from_raw(pid), Signal::SIGKILL) {
+        Ok(()) | Err(Errno::ESRCH) => Ok(()),
+        Err(error) => Err(IsolatedReplayError::Kill(format!(
+            "signal replay worker process group: {error}"
+        ))),
+    }
 }
 
 /// Non-Unix targets have no process groups; the direct child kill still applies.
 #[cfg(not(unix))]
-fn terminate_process_group(_pid: u32) {}
+fn terminate_process_group(_pid: u32) -> Result<(), IsolatedReplayError> {
+    Ok(())
+}

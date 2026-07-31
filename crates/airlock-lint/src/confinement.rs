@@ -24,7 +24,8 @@
 use std::collections::BTreeMap;
 
 use airlock_ir::{
-    BaseExpr, ComponentManifest, ExtExpr, PreprocessedColumn, RelationEntry, RowSupport,
+    BaseExpr, ColumnKind, CommitmentPhase, ComponentManifest, ExtExpr, PreprocessedColumn,
+    RelationEntry, RowSupport,
 };
 
 /// M31 prime. Guard evaluation is exact in the base field.
@@ -51,15 +52,15 @@ pub(crate) fn confinement_certificate(
     if physical_length <= semantic_length {
         return None;
     }
-    let padding_rows: Vec<u64> = (semantic_length..physical_length).collect();
-
     for constraint in &component.constraints {
         // The constraint must actually apply on the padding rows it is meant to
         // discharge; a constraint scoped away from them proves nothing there.
-        if !row_support_covers(&constraint.row_support, &padding_rows, physical_length) {
+        if !row_support_covers(&constraint.row_support, semantic_length, physical_length) {
             continue;
         }
-        let factors = flatten_ext_product(&constraint.expression)?;
+        let Some(factors) = flatten_ext_product(&constraint.expression) else {
+            continue;
+        };
         // `g * m = 0` with `g != 0` forces `m = 0`, and `m = 0` exactly when
         // `-m = 0`, so a factor matching the multiplicity up to sign is enough.
         // Table-side relations carry a negated multiplicity by convention.
@@ -79,13 +80,19 @@ pub(crate) fn confinement_certificate(
         if guards.is_empty() {
             continue;
         }
+        if guards
+            .iter()
+            .any(|guard| !uses_only_fixed_columns(guard, component))
+        {
+            continue;
+        }
 
-        // Every padding row needs at least one nonzero guard factor; a product is
-        // zero when any factor is zero, so a guard that vanishes on a padding row
-        // leaves the multiplicity unconstrained there.
-        let all_padding_guarded = padding_rows.iter().all(|row| {
+        // Every guard factor must be nonzero on every padding row. A product is
+        // zero when any factor is zero, so one vanishing factor leaves the
+        // multiplicity unconstrained on that row.
+        let all_padding_guarded = (semantic_length..physical_length).all(|row| {
             guards.iter().all(|guard| {
-                matches!(evaluate_base_at_row(guard, prep, *row, physical_length), Some(value) if value != 0)
+                matches!(evaluate_base_at_row(guard, prep, row, physical_length), Some(value) if value != 0)
             })
         });
         if !all_padding_guarded {
@@ -107,20 +114,37 @@ pub(crate) fn confinement_certificate(
     None
 }
 
-/// Whether a constraint's declared support includes every listed row.
-fn row_support_covers(support: &RowSupport, rows: &[u64], physical_length: u64) -> bool {
+/// Whether every column in an expression is a verifier-owned phase-0 column.
+fn uses_only_fixed_columns(expression: &BaseExpr, component: &ComponentManifest) -> bool {
+    match expression {
+        BaseExpr::Column { id, .. } => {
+            let mut declarations = component.columns.iter().filter(|column| column.id == *id);
+            declarations.next().is_some_and(|column| {
+                declarations.next().is_none()
+                    && column.kind == ColumnKind::Preprocessed
+                    && column.commitment_phase == CommitmentPhase::Phase0Public
+            })
+        }
+        BaseExpr::Add { lhs, rhs } | BaseExpr::Mul { lhs, rhs } => {
+            uses_only_fixed_columns(lhs, component) && uses_only_fixed_columns(rhs, component)
+        }
+        BaseExpr::Neg { inner } => uses_only_fixed_columns(inner, component),
+        BaseExpr::Const { .. } => true,
+        BaseExpr::Param { .. } | BaseExpr::Inv { .. } => false,
+    }
+}
+
+/// Whether a constraint's declared support includes every padding row.
+fn row_support_covers(support: &RowSupport, semantic_length: u64, physical_length: u64) -> bool {
     match support {
         RowSupport::All => true,
-        RowSupport::Range { start, end } => rows.iter().all(|row| row >= start && row < end),
+        RowSupport::Range { start, end } => *start <= semantic_length && *end >= physical_length,
         // Class-named support cannot be reduced to concrete indices without a
         // per-row classification, which the artifact does not carry. Fail closed
         // unless the class set explicitly admits padding.
-        RowSupport::Classes { classes } => {
-            let _ = physical_length;
-            classes
-                .iter()
-                .any(|class| matches!(class, airlock_ir::RowClass::Padding))
-        }
+        RowSupport::Classes { classes } => classes
+            .iter()
+            .any(|class| matches!(class, airlock_ir::RowClass::Padding)),
     }
 }
 

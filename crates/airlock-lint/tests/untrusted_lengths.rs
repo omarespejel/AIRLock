@@ -12,7 +12,9 @@ use airlock_ir::{
     PreprocessedColumn, RelationEntry, RelationRole, RowClass, RowSupport, SemanticContract,
     SemanticType,
 };
-use airlock_lint::{LintOptions, lint_component};
+use airlock_lint::{
+    ConfinementEvidence, LintOptions, lint_component, table_multiplicity_obligations,
+};
 
 /// Table component whose declared `semantic_length` exceeds the supplied values.
 ///
@@ -168,4 +170,34 @@ fn lookup_functionality_clamps_padding_class_support() {
             .any(|finding| finding.code == FindingCode::InvalidPreprocessedContract),
         "padding-class support must also reconcile declared lengths: {findings:#?}"
     );
+}
+
+#[test]
+fn reconciled_no_padding_lengths_are_accepted() {
+    let component = overlong_semantic_length_component(RowSupport::All, 4);
+    let findings = lint_component(&component, &LintOptions::default());
+    assert!(
+        findings
+            .iter()
+            .all(|finding| finding.code != FindingCode::InvalidPreprocessedContract),
+        "reconciled lengths must not be rejected: {findings:#?}"
+    );
+    let obligation = table_multiplicity_obligations(&component)
+        .into_iter()
+        .next()
+        .expect("table obligation");
+    assert_eq!(obligation.evidence, ConfinementEvidence::NoPaddingRows);
+}
+
+#[test]
+fn inconsistent_lengths_cannot_claim_no_padding_rows() {
+    let mut component = overlong_semantic_length_component(RowSupport::All, 4);
+    component.preprocessed[0].physical_length = 5;
+
+    let obligation = table_multiplicity_obligations(&component)
+        .into_iter()
+        .next()
+        .expect("table obligation");
+    assert_eq!(obligation.evidence, ConfinementEvidence::NoSemanticMetadata);
+    assert!(!obligation.is_confined());
 }
