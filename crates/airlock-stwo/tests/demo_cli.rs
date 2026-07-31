@@ -340,6 +340,13 @@ fn replay_command_rejects_fifo_before_worker_launch() {
     let parent = temp_parent("fifo-replay");
     let request = parent.join("request.fifo");
     let bundle = parent.join("fifo-bundle");
+    let marker = parent.join("worker-launched");
+    assert!(!marker.to_string_lossy().contains('\''));
+    let worker_script = write_script(
+        &parent,
+        "sentinel-worker.sh",
+        format!("#!/bin/sh\n: > '{}'\nexit 97\n", marker.display()).as_bytes(),
+    );
     let status = Command::new("mkfifo")
         .arg(&request)
         .status()
@@ -351,13 +358,17 @@ fn replay_command_rejects_fifo_before_worker_launch() {
         "--request",
         as_str(&request),
         "--worker",
-        as_str(&worker()),
+        as_str(&worker_script),
         "--output",
         as_str(&bundle),
     ]);
     assert!(!rejected.status.success());
     assert!(String::from_utf8_lossy(&rejected.stderr).contains("non-symlink regular file"));
     assert!(!bundle.exists());
+    assert!(
+        !marker.exists(),
+        "request preflight must not launch the worker"
+    );
 
     fs::remove_dir_all(parent).expect("remove CLI test directory");
 }
