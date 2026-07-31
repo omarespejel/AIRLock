@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::sync::OnceLock;
 
 use airlock_boundary::{
     CONSTRAINT_VIOLATION_REJECTION_KIND, CaseKind, MAX_WITNESS_MUTATIONS, ProofGenerationOutcome,
@@ -50,7 +51,7 @@ impl StwoWitnessReplay {
                 "witness replay is not bound to the pinned target and source".to_owned(),
             ));
         }
-        let canonical_audit_ir_sha256 = StwoWitnessAdapter::new()?.audit_ir_sha256()?;
+        let canonical_audit_ir_sha256 = canonical_audit_ir_sha256()?;
         if self.observation.audit_ir_sha256 != canonical_audit_ir_sha256 {
             return Err(StwoWitnessError::InvalidReplay(
                 "witness AuditIR digest differs from the exported component".to_owned(),
@@ -63,6 +64,16 @@ impl StwoWitnessReplay {
             ));
         }
         Ok(())
+    }
+}
+
+fn canonical_audit_ir_sha256() -> Result<&'static str, StwoWitnessError> {
+    static DIGEST: OnceLock<Result<String, StwoWitnessError>> = OnceLock::new();
+    match DIGEST
+        .get_or_init(|| StwoWitnessAdapter::new().and_then(|adapter| adapter.audit_ir_sha256()))
+    {
+        Ok(digest) => Ok(digest),
+        Err(error) => Err(error.clone()),
     }
 }
 
