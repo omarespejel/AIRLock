@@ -24,7 +24,7 @@ index c091ac16..7751bb28 100644
  use super::fields::qm31::SecureField;
  use super::fri::FriConfig;
 diff --git a/crates/stwo/src/core/pcs/verifier.rs b/crates/stwo/src/core/pcs/verifier.rs
-index 6c059354..254f96e1 100644
+index 6c059354..3d6f5f4b 100644
 --- a/crates/stwo/src/core/pcs/verifier.rs
 +++ b/crates/stwo/src/core/pcs/verifier.rs
 @@ -28,6 +28,29 @@ pub trait ConsumptionSink {
@@ -89,17 +89,7 @@ index 6c059354..254f96e1 100644
          }
      }
  
-@@ -90,7 +131,8 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
-         proof: CommitmentSchemeProof<MC::H>,
-         channel: &mut MC::C,
-     ) -> Result<(), VerificationError> {
--        channel.mix_felts(&proof.sampled_values.clone().flatten_cols());
-+        let flattened_sampled_values = proof.sampled_values.clone().flatten_cols();
-+        channel.mix_felts(&flattened_sampled_values);
-         let random_coeff = channel.draw_secure_felt();
-         let lifting_log_size = self.trees.last().unwrap().height;
-         let bound =
-@@ -101,12 +143,38 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
+@@ -101,12 +142,38 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
              FriVerifier::<MC>::commit(channel, self.config.fri_config, proof.fri_proof, bound)?;
  
          // Verify proof of work.

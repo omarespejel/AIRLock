@@ -12,15 +12,26 @@
 //! commitment absorptions are not reported by the patch and are therefore absent
 //! from both the contract and the trace.
 //!
-//! Sampled values are also out of the projection, for a reason worth recording.
-//! The oracle requires that prover-controlled data pass its declared validations
-//! *before* it enters the transcript, and the pinned verifier absorbs the
-//! flattened sampled values with no prior check: their shape is only reconciled
-//! against the sampled points much later, by `zip_eq`. Modeling that absorption
-//! would therefore force a `ProverDataUsedBeforeValidation` finding. That finding
-//! would be unsound as stated -- the prover already controls those field element
-//! values, so ordering the shape check earlier removes no grinding freedom -- so
-//! the projection excludes it rather than manufacture it.
+//! Sampled values are out of the projection, and the reason is a judgement call
+//! that should be visible rather than buried. The pinned verifier absorbs the
+//! flattened sampled values and draws the quotient coefficient before their shape
+//! is reconciled against the sampled points, which happens much later in a
+//! `zip_eq`. That ordering is exactly the pattern `AGENTS.md` review rule 3 names:
+//! prover-controlled data influencing a transcript before its shape is validated.
+//!
+//! It is excluded anyway, for two reasons. First, no exploit follows from the
+//! ordering itself: the prover already chooses those field element values freely,
+//! so validating their shape earlier removes no grinding freedom over the
+//! coefficient drawn next. Second, the concrete consequence of a shape mismatch
+//! is a panic rather than a typed rejection, and that is already observed and
+//! disclosed elsewhere -- the `truncate-second-sample` case in `adapter.rs`
+//! records `BoundaryVerdict::Panic` for a `sampled_values` truncation.
+//!
+//! So modeling the absorption here would emit a `ProverDataUsedBeforeValidation`
+//! counterexample carrying no attacker capability, on a class already covered by
+//! another lane. The ordering is recorded as a limitation instead of asserted as a
+//! finding. If someone later shows the shape freedom yields grinding advantage,
+//! this exclusion is the thing to revisit.
 //!
 //! The contract is exact over the projection, not over the whole Fiat-Shamir
 //! transcript, and `docs/coverage.yaml` says so.
@@ -193,9 +204,13 @@ pub fn demo_transcript_contract(
                 nonce_path: BoundaryPath::new("proof_of_work", vec![]),
                 nonce_byte_len: NONCE_BYTE_LEN,
                 absorbed_as: Some(QUERY_POW_NONCE_ABSORPTION.to_owned()),
+                // The oracle only consults this policy when the observed bits are
+                // zero, and the contract validator rejects any non-`DisallowZeroPow`
+                // policy at positive bits. So at `pow_bits > 0` the work is done by
+                // the `bits` equality check above, which fires
+                // `TranscriptPowContractMismatch` if the run degrades to zero work;
+                // the policy below is the required declaration, not the mechanism.
                 zero_nonce_policy: if pow_bits > 0 {
-                    // A profile that requires real work must not silently degrade
-                    // to zero work; the contract states that as a hard rule.
                     ZeroPowNoncePolicy::DisallowZeroPow
                 } else {
                     ZeroPowNoncePolicy::RequireZeroNonce
@@ -234,11 +249,14 @@ pub fn observe_demo_transcript(
         )
     });
 
-    // The query draw indexes the lifted evaluation domain, whose log size is the
-    // trace log size plus the FRI blowup factor. Deriving the expected size from
-    // the configuration rather than from the reported event keeps the contract an
-    // independent claim.
-    let query_domain_log_size = DEMO_LOG_ROWS + config.fri_config.log_blowup_factor;
+    // `MerkleVerifierLifted::new` sets a tree's height to `lifting_log_size` when
+    // the config supplies one, and otherwise to the widest committed column
+    // extended by the blowup factor. Mirror both branches: assuming the default
+    // would make this derivation silently wrong under a lifting override. The
+    // demo's widest column is the trace itself, which is the one assumption left.
+    let query_domain_log_size = config
+        .lifting_log_size
+        .unwrap_or(DEMO_LOG_ROWS + config.fri_config.log_blowup_factor);
     let query_count = fixture.config.fri_config.n_queries;
     let trace = observed.trace("observed-transcript")?;
     Ok(ObservedTranscriptRun {
