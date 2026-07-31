@@ -241,7 +241,10 @@ operator configuring zero work and is not a claim about the default profile.
 
 Sampled-value absorption, the quotient coefficient draw, FRI folding challenges,
 statement and commitment absorption, and domain separation are outside the
-projection. The sampled-value exclusion is a judgement call recorded in the
+projection. Across lanes this capture changes only the protocol lane: no AIR or
+AuditIR claim follows from a transcript observation, statement binding stays
+`OUT_OF_MODEL`, and the evidence it produces is one unsigned content-addressed
+trace per case. The sampled-value exclusion is a judgement call recorded in the
 module documentation: the pinned verifier absorbs those values before their shape
 is reconciled, which matches review rule 3, but no attacker capability follows
 from the ordering and the concrete panic consequence is already observed in the

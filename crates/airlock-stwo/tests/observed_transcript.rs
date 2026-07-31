@@ -7,10 +7,11 @@
 //! `RequireZeroNonce`, and the oracle is expected to fire.
 
 use airlock_boundary::{
-    TranscriptFindingCode, TranscriptTrace, TranscriptVerdict, VerificationOutcome,
-    evaluate_transcript,
+    AbsorbKind, TranscriptEvent, TranscriptFindingCode, TranscriptTrace, TranscriptVerdict,
+    VerificationOutcome, evaluate_transcript,
 };
 use airlock_stwo::{QUERY_POW, demo_transcript_contract, observe_demo_transcript};
+use sha2::{Digest, Sha256};
 
 /// Query count of the pinned demo profile (`FriConfig::new(0, 1, 3, 1)`).
 const DEMO_QUERY_COUNT: usize = 3;
@@ -88,10 +89,12 @@ fn zero_work_arbitrary_nonce_makes_the_transcript_oracle_fire() {
     );
 }
 
-/// The observed trace must come from reported events, so the nonce recorded as
-/// verified must equal the nonce recorded as absorbed.
+/// The observed proof-of-work event must carry the exact nonce checked.
+///
+/// This pins the `VerifyPow` side only. The binding between what was verified and
+/// what was absorbed is a separate property, exercised in the two cases below.
 #[test]
-fn observed_nonce_verification_and_absorption_agree() {
+fn observed_pow_event_carries_the_exact_nonce() {
     let nonce: u64 = 0x0102_0304_0506_0708;
     let run = observe_demo_transcript(0, Some(nonce)).expect("observed run");
 
@@ -100,9 +103,7 @@ fn observed_nonce_verification_and_absorption_agree() {
         .events
         .iter()
         .filter_map(|event| match event {
-            airlock_boundary::TranscriptEvent::VerifyPow { nonce_bytes, .. } => {
-                Some(nonce_bytes.clone())
-            }
+            TranscriptEvent::VerifyPow { nonce_bytes, .. } => Some(nonce_bytes.clone()),
             _ => None,
         })
         .collect();
@@ -111,6 +112,116 @@ fn observed_nonce_verification_and_absorption_agree() {
         vec![nonce.to_le_bytes().to_vec()],
         "the observed verification must carry the exact nonce checked"
     );
+}
+
+/// The absorbed nonce must be the one that passed verification.
+///
+/// The repair direction: on an honest run the absorption digest equals the digest
+/// of the verified nonce bytes, so the binding holds and the oracle accepts.
+#[test]
+fn absorbed_nonce_is_bound_to_the_verified_nonce() {
+    let run = observe_demo_transcript(0, Some(0)).expect("observed run");
+
+    let verified = pow_nonce_bytes(&run.trace).expect("one pow event");
+    let absorbed = absorbed_nonce_digest(&run.trace).expect("one nonce absorption");
+    assert_eq!(
+        absorbed,
+        sha256_hex(&verified),
+        "the absorbed digest must be the digest of the verified nonce"
+    );
+
+    let report = evaluate_transcript(&run.contract, &run.trace);
+    assert_eq!(
+        report.verdict,
+        TranscriptVerdict::Accepted,
+        "a bound nonce must satisfy the contract: {:?}",
+        report.findings
+    );
+}
+
+/// The vulnerable direction: a verifier that absorbs a different value than the
+/// one it verified must be caught.
+///
+/// Proof-of-work acceptance alone is not enough -- if the absorbed bytes may
+/// differ from the verified bytes, the work does not constrain the transcript the
+/// draw is derived from. Both traces here are real observations; only the
+/// absorption digest is swapped, so the proof-of-work event still reports an
+/// accepted canonical zero nonce and the binding check is the sole failure.
+#[test]
+fn an_absorbed_nonce_that_differs_from_the_verified_one_fires() {
+    let bound = observe_demo_transcript(0, Some(0)).expect("observed run");
+    let other = observe_demo_transcript(0, Some(0xA5A5_A5A5_A5A5_A5A5)).expect("observed run");
+
+    let foreign_digest = absorbed_nonce_digest(&other.trace).expect("one nonce absorption");
+    assert_ne!(
+        foreign_digest,
+        absorbed_nonce_digest(&bound.trace).expect("one nonce absorption"),
+        "the substituted digest must actually differ"
+    );
+
+    let mut events = bound.trace.events.clone();
+    let absorption = events
+        .iter_mut()
+        .find_map(|event| match event {
+            TranscriptEvent::Absorb {
+                kind: AbsorbKind::Nonce,
+                value_digest,
+                ..
+            } => Some(value_digest),
+            _ => None,
+        })
+        .expect("one nonce absorption");
+    *absorption = foreign_digest;
+    let unbound = TranscriptTrace {
+        events,
+        ..bound.trace.clone()
+    };
+
+    let report = evaluate_transcript(&bound.contract, &unbound);
+    assert_eq!(
+        report.verdict,
+        TranscriptVerdict::Counterexample,
+        "an unbound nonce absorption must be a counterexample: {:?}",
+        report.findings
+    );
+    assert!(
+        report.findings.iter().any(|finding| finding.code
+            == TranscriptFindingCode::TranscriptPowNonceBindingMismatch),
+        "expected the nonce binding mismatch to be named: {:?}",
+        report.findings
+    );
+}
+
+/// Exact nonce bytes from the single observed proof-of-work event.
+fn pow_nonce_bytes(trace: &TranscriptTrace) -> Option<Vec<u8>> {
+    let mut found = trace.events.iter().filter_map(|event| match event {
+        TranscriptEvent::VerifyPow { nonce_bytes, .. } => Some(nonce_bytes.clone()),
+        _ => None,
+    });
+    let first = found.next()?;
+    found.next().is_none().then_some(first)
+}
+
+/// Digest from the single observed nonce absorption.
+fn absorbed_nonce_digest(trace: &TranscriptTrace) -> Option<String> {
+    let mut found = trace.events.iter().filter_map(|event| match event {
+        TranscriptEvent::Absorb {
+            kind: AbsorbKind::Nonce,
+            value_digest,
+            ..
+        } => Some(value_digest.clone()),
+        _ => None,
+    });
+    let first = found.next()?;
+    found.next().is_none().then_some(first)
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(64);
+    for byte in Sha256::digest(bytes) {
+        out.push_str(&format!("{byte:02x}"));
+    }
+    out
 }
 
 /// Print the firing report so the verdict class is visible, not merely asserted.
@@ -167,7 +278,7 @@ fn a_trace_missing_its_query_draw_is_not_accepted() {
             .trace
             .events
             .iter()
-            .filter(|event| !matches!(event, airlock_boundary::TranscriptEvent::DrawQueries { .. }))
+            .filter(|event| !matches!(event, TranscriptEvent::DrawQueries { .. }))
             .cloned()
             .collect(),
         ..run.trace.clone()
