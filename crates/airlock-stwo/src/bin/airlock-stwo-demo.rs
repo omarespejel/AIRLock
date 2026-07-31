@@ -1,7 +1,7 @@
 //! Fail-closed command-line demo for pinned Stwo verifier-boundary replay.
 
-use std::fs::OpenOptions;
-use std::io::Write;
+use std::fs::{File, OpenOptions};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -16,6 +16,8 @@ use airlock_stwo::{
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
 use serde_json::json;
+
+const MAX_REPLAY_REQUEST_BYTES: u64 = 1 << 20;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -34,6 +36,14 @@ enum Command {
     Honest(RunArgs),
     /// Corrupt one verifier-requested OODS sample and require typed rejection.
     CorruptSample(RunArgs),
+    /// Execute a bounded, source-pinned replay request from JSON.
+    Replay {
+        /// Existing replay-request JSON file, limited to 1 MiB.
+        #[arg(long)]
+        request: PathBuf,
+        #[command(flatten)]
+        run: RunArgs,
+    },
     /// Verify a bundle and reproduce its expected replay with the pinned worker.
     Verify {
         /// Replay bundle directory.
@@ -137,6 +147,10 @@ fn main() -> Result<()> {
                 }],
             );
             run_case(request, args)
+        }
+        Command::Replay { request, run } => {
+            let request = read_replay_request(&request)?;
+            run_case(request, run)
         }
         Command::Verify { bundle, worker } => verify_expected_bundle(&bundle, worker),
         Command::GenerateRegression { bundle, output } => {
@@ -426,6 +440,24 @@ fn run_case(request: ReplayRequest, args: RunArgs) -> Result<()> {
         })
     );
     Ok(())
+}
+
+fn read_replay_request(path: &Path) -> Result<ReplayRequest> {
+    let mut bytes = Vec::new();
+    File::open(path)
+        .with_context(|| format!("open {}", path.display()))?
+        .take(MAX_REPLAY_REQUEST_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .with_context(|| format!("read {}", path.display()))?;
+    if bytes.len() as u64 > MAX_REPLAY_REQUEST_BYTES {
+        bail!("replay request exceeds the 1 MiB limit");
+    }
+    let request: ReplayRequest =
+        serde_json::from_slice(&bytes).with_context(|| format!("decode {}", path.display()))?;
+    request
+        .validate()
+        .with_context(|| format!("validate {}", path.display()))?;
+    Ok(request)
 }
 
 fn verify_expected_bundle(bundle: &Path, worker: Option<PathBuf>) -> Result<()> {

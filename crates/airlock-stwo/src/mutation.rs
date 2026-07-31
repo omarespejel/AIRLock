@@ -86,8 +86,22 @@ fn mutate_container(
     mutation: ContainerMutation,
 ) -> Result<(), StwoMutationError> {
     match (path.field.as_str(), path.indices.as_slice()) {
+        ("commitments", []) => mutate_vec(&mut proof.0.commitments.0, mutation, path),
         ("sampled_values", [tree, column]) => {
             let values = nested_column_mut(&mut proof.0.sampled_values.0, *tree, *column, path)?;
+            mutate_vec(values, mutation, path)
+        }
+        ("decommitments.hash_witness", [tree]) => {
+            let values = proof
+                .0
+                .decommitments
+                .0
+                .get_mut(*tree)
+                .ok_or_else(|| StwoMutationError::PathOutOfBounds(path.clone()))?;
+            mutate_vec(&mut values.hash_witness, mutation, path)
+        }
+        ("queried_values", [tree, column]) => {
+            let values = nested_column_mut(&mut proof.0.queried_values.0, *tree, *column, path)?;
             mutate_vec(values, mutation, path)
         }
         _ => Err(StwoMutationError::UnsupportedPath(path.clone())),
@@ -171,6 +185,7 @@ fn replace_scalar(
     mutation: ScalarMutation,
 ) -> Result<(), StwoMutationError> {
     match (path.field.as_str(), path.indices.as_slice()) {
+        ("proof_of_work", []) => apply_u64(&mut proof.0.proof_of_work, mutation, path),
         ("sampled_values", [tree, column, index]) => {
             let values = nested_column_mut(&mut proof.0.sampled_values.0, *tree, *column, path)?;
             let len = values.len();
@@ -186,6 +201,31 @@ fn replace_scalar(
         }
         _ => Err(StwoMutationError::UnsupportedPath(path.clone())),
     }
+}
+
+fn apply_u64(
+    value: &mut u64,
+    mutation: ScalarMutation,
+    path: &BoundaryPath,
+) -> Result<(), StwoMutationError> {
+    *value = match mutation {
+        ScalarMutation::Zero => 0,
+        ScalarMutation::One => 1,
+        ScalarMutation::Maximum => u64::MAX,
+        ScalarMutation::Increment => value.wrapping_add(1),
+        ScalarMutation::Decrement => value.wrapping_sub(1),
+        ScalarMutation::FlipBit { bit } => {
+            if bit >= u64::BITS as usize {
+                return Err(StwoMutationError::BitOutOfBounds {
+                    path: path.clone(),
+                    bit,
+                    bits: u64::BITS as usize,
+                });
+            }
+            *value ^ (1_u64 << bit)
+        }
+    };
+    Ok(())
 }
 
 fn apply_secure_field(
@@ -309,6 +349,79 @@ mod tests {
         assert!(matches!(error, StwoMutationError::PathOutOfBounds(_)));
     }
 
+    #[test]
+    fn additional_proof_containers_are_mutated_without_type_erasure() {
+        let fixture = build_demo_fixture().expect("fixture");
+        let commitment = mutate_proof(
+            "drop-commitment",
+            &fixture.proof,
+            vec![MutationOperation::Drop {
+                path: BoundaryPath::new("commitments", vec![]),
+                index: 0,
+            }],
+        )
+        .expect("commitment mutation");
+        assert_eq!(
+            commitment.proof.0.commitments.len() + 1,
+            fixture.proof.0.commitments.len()
+        );
+
+        let queried_path = first_nonempty_queried_values_path(&fixture.proof)
+            .expect("nonempty queried-values column");
+        mutate_proof(
+            "truncate-queried-values",
+            &fixture.proof,
+            vec![MutationOperation::Truncate {
+                path: queried_path,
+                new_len: 0,
+            }],
+        )
+        .expect("queried-values mutation");
+
+        let decommitment_path = first_nonempty_decommitment_path(&fixture.proof)
+            .expect("nonempty decommitment witness");
+        mutate_proof(
+            "truncate-decommitment",
+            &fixture.proof,
+            vec![MutationOperation::Truncate {
+                path: decommitment_path,
+                new_len: 0,
+            }],
+        )
+        .expect("decommitment mutation");
+    }
+
+    #[test]
+    fn u64_mutations_cover_maximum_and_flip_bit() {
+        let fixture = build_demo_fixture().expect("fixture");
+        for (case_id, value) in [
+            ("maximum-query-pow", ScalarMutation::Maximum),
+            ("flip-query-pow", ScalarMutation::FlipBit { bit: 63 }),
+        ] {
+            let mutated = mutate_proof(
+                case_id,
+                &fixture.proof,
+                vec![MutationOperation::ReplaceScalar {
+                    path: BoundaryPath::new("proof_of_work", vec![]),
+                    value,
+                }],
+            )
+            .expect("u64 mutation");
+            assert_ne!(mutated.proof.0.proof_of_work, fixture.proof.0.proof_of_work);
+        }
+
+        let error = mutate_proof(
+            "invalid-query-pow-bit",
+            &fixture.proof,
+            vec![MutationOperation::ReplaceScalar {
+                path: BoundaryPath::new("proof_of_work", vec![]),
+                value: ScalarMutation::FlipBit { bit: 64 },
+            }],
+        )
+        .expect_err("out-of-range bit must fail");
+        assert!(matches!(error, StwoMutationError::BitOutOfBounds { .. }));
+    }
+
     fn first_nonempty_sample_path(proof: &DemoProof) -> Option<BoundaryPath> {
         for (tree_index, columns) in proof.0.sampled_values.iter().enumerate() {
             for (column_index, values) in columns.iter().enumerate() {
@@ -317,6 +430,27 @@ mod tests {
                         "sampled_values",
                         vec![tree_index, column_index, 0],
                     ));
+                }
+            }
+        }
+        None
+    }
+
+    fn first_nonempty_decommitment_path(proof: &DemoProof) -> Option<BoundaryPath> {
+        proof
+            .0
+            .decommitments
+            .iter()
+            .enumerate()
+            .find(|(_, decommitment)| !decommitment.hash_witness.is_empty())
+            .map(|(tree, _)| BoundaryPath::new("decommitments.hash_witness", vec![tree]))
+    }
+
+    fn first_nonempty_queried_values_path(proof: &DemoProof) -> Option<BoundaryPath> {
+        for (tree, columns) in proof.0.queried_values.iter().enumerate() {
+            for (column, values) in columns.iter().enumerate() {
+                if !values.is_empty() {
+                    return Some(BoundaryPath::new("queried_values", vec![tree, column]));
                 }
             }
         }

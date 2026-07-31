@@ -4,7 +4,11 @@ use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use airlock_stwo::{ReplayRequest, run_isolated_replay, write_replay_bundle};
+use airlock_boundary::{BoundaryPath, MutationOperation};
+use airlock_stwo::{
+    DifferentialVerdict, ReplayRequest, StwoBoundaryAdapter, read_verified_replay_bundle,
+    run_isolated_replay, write_replay_bundle,
+};
 
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -172,6 +176,129 @@ fn cli_runs_verifies_and_renders_the_pinned_demo() {
         );
         assert_eq!(document["requested_paths"], 11, "{command}");
     }
+    fs::remove_dir_all(parent).expect("remove CLI test directory");
+}
+
+#[test]
+fn replay_command_executes_bounded_requests_and_keeps_non_green_evidence() {
+    let parent = temp_parent("generic-replay");
+    let rejected_request = parent.join("drop-commitment.json");
+    let rejected_bundle = parent.join("drop-commitment");
+    let request = ReplayRequest::mutation(
+        "drop-commitment",
+        vec![MutationOperation::Drop {
+            path: BoundaryPath::new("commitments", vec![]),
+            index: 0,
+        }],
+    );
+    fs::write(
+        &rejected_request,
+        serde_json::to_vec_pretty(&request).expect("encode request"),
+    )
+    .expect("write request");
+    let rejected = run(&[
+        "replay",
+        "--request",
+        as_str(&rejected_request),
+        "--worker",
+        as_str(&worker()),
+        "--output",
+        as_str(&rejected_bundle),
+    ]);
+    assert!(rejected.status.success());
+    assert!(String::from_utf8_lossy(&rejected.stdout).contains("MutationRejected"));
+
+    let adapter = StwoBoundaryAdapter::new().expect("adapter");
+    let (tree, column, _) = adapter
+        .honest_proof()
+        .0
+        .queried_values
+        .iter()
+        .enumerate()
+        .find_map(|(tree, columns)| {
+            columns
+                .iter()
+                .enumerate()
+                .find(|(_, values)| !values.is_empty())
+                .map(|(column, values)| (tree, column, values))
+        })
+        .expect("nonempty queried-values column");
+    let panic_request = parent.join("truncate-queries.json");
+    let panic_bundle = parent.join("truncate-queries");
+    let request = ReplayRequest::mutation(
+        "truncate-queries",
+        vec![MutationOperation::Truncate {
+            path: BoundaryPath::new("queried_values", vec![tree, column]),
+            new_len: 0,
+        }],
+    );
+    fs::write(
+        &panic_request,
+        serde_json::to_vec_pretty(&request).expect("encode request"),
+    )
+    .expect("write request");
+    let panicked = run(&[
+        "replay",
+        "--request",
+        as_str(&panic_request),
+        "--worker",
+        as_str(&worker()),
+        "--output",
+        as_str(&panic_bundle),
+    ]);
+    assert!(!panicked.status.success());
+    let retained = read_verified_replay_bundle(&panic_bundle).expect("retained panic bundle");
+    assert_eq!(
+        retained.report.replay.expect("completed replay").verdict,
+        DifferentialVerdict::Panic
+    );
+
+    fs::remove_dir_all(parent).expect("remove CLI test directory");
+}
+
+#[test]
+fn replay_command_rejects_unknown_and_oversized_requests_before_execution() {
+    let parent = temp_parent("invalid-replay");
+    let unknown_request = parent.join("unknown.json");
+    let unknown_bundle = parent.join("unknown-bundle");
+    let mut request = serde_json::to_value(ReplayRequest::honest()).expect("encode request");
+    request
+        .as_object_mut()
+        .expect("request object")
+        .insert("unexpected".to_owned(), serde_json::Value::Bool(true));
+    fs::write(
+        &unknown_request,
+        serde_json::to_vec(&request).expect("encode malformed request"),
+    )
+    .expect("write request");
+    let unknown = run(&[
+        "replay",
+        "--request",
+        as_str(&unknown_request),
+        "--worker",
+        as_str(&worker()),
+        "--output",
+        as_str(&unknown_bundle),
+    ]);
+    assert!(!unknown.status.success());
+    assert!(!unknown_bundle.exists());
+
+    let oversized_request = parent.join("oversized.json");
+    let oversized_bundle = parent.join("oversized-bundle");
+    fs::write(&oversized_request, vec![b' '; (1 << 20) + 1]).expect("write oversized request");
+    let oversized = run(&[
+        "replay",
+        "--request",
+        as_str(&oversized_request),
+        "--worker",
+        as_str(&worker()),
+        "--output",
+        as_str(&oversized_bundle),
+    ]);
+    assert!(!oversized.status.success());
+    assert!(String::from_utf8_lossy(&oversized.stderr).contains("exceeds the 1 MiB limit"));
+    assert!(!oversized_bundle.exists());
+
     fs::remove_dir_all(parent).expect("remove CLI test directory");
 }
 

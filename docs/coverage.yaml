@@ -30,7 +30,7 @@ surfaces:
     note: "Broad Stwo and production-integration coverage is not yet instantiated."
   - name: stwo-demo-verifier-boundary
     status: COVERED
-    note: "Pinned real proof; verifier-derived OODS sample request; sample-only corruption; raw-PCS/framework differential replay. Other proof containers are not covered."
+    note: "Pinned real proof; verifier-derived OODS sample request; typed mutations of sampled values, commitments, decommitment hash witnesses, queried values, and the PoW nonce; raw-PCS/framework differential replay; bounded source-pinned JSON replay. Queried-values truncation records a non-green panic in both layers. Other decommitment fields, FRI internals, query positions, configuration, components, and production integrations are not covered."
   - name: stwo-demo-replay-artifact
     status: COVERED
     note: "Verifier-boundary sub-surface only: pinned request; private copied worker; bounded subprocess; deterministic three-file replay bundle; strict inventory, checksum, schema, source/target, and replay validation; fail-closed CLI and generated Rust regression. Not evidence/provenance assurance, an OS sandbox, or producer authentication."

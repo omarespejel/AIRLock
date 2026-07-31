@@ -17,7 +17,7 @@ green AIRLock report establishes whole-system STARK security.
 | AuditIR schema (`airlock-ir`) | landed |
 | Static gate (`airlock-lint`) | schema/shape + parameter/phase closure + preprocessed integrity + Q8 support/functionality (confinement requires a constraint-derived certificate, never an annotation) + encoder bound + LogUp finalize |
 | Verifier boundary contracts (`airlock-boundary`) | proof-neutral request/supply/consumption, typed transcript oracles, and exact witness-matrix contracts |
-| Pinned Stwo adapter (`airlock-stwo`) | real demo proof, verifier-derived OODS requests, sample-only mutations, raw-PCS/framework replay, phase-bound pre-commitment witness injection, one independently selected upstream Wide Fibonacci target, deterministic cross-target cell matrix, subprocess containment, verified replay bundles, generated Rust regression, sealed portable campaign |
+| Pinned Stwo adapter (`airlock-stwo`) | real demo proof, verifier-derived OODS requests, typed mutations of sampled values, commitments, decommitment hash witnesses, queried values, and PoW, raw-PCS/framework replay, phase-bound pre-commitment witness injection, one independently selected upstream Wide Fibonacci target, deterministic cross-target cell matrix, subprocess containment, verified replay bundles, generated Rust regression, sealed portable campaign |
 | CLI (`airlock`) | `air`, `coverage`, `schema` |
 | Stwo `AuditEvaluator` exporter | landed (`airlock-export`); concrete differential checks cover one synthetic cross-interaction AIR |
 | cvc5 / Lean | later PRs |
@@ -94,6 +94,14 @@ cargo +nightly-2026-01-15 run --locked --offline \
   -p airlock-stwo --bin airlock-stwo-demo -- \
   verify-witness-matrix --artifact /tmp/airlock-witness-matrix.json
 
+# Execute a validated, source-pinned ReplayRequest JSON under the same bounded
+# worker policy. A non-green result still writes its evidence bundle but exits
+# unsuccessfully.
+cargo +nightly-2026-01-15 run --locked --offline \
+  -p airlock-stwo --bin airlock-stwo-demo -- \
+  replay --request /tmp/replay-request.json \
+  --output /tmp/replay-result
+
 cargo +nightly-2026-01-15 run --locked --offline -p airlock-cli -- air \
   --manifest fixtures/seeded/q8_padded_table_vulnerable.json
 # expects StaticFail (exit 1)
@@ -129,8 +137,13 @@ replay. Solver/Lean tracks remain separate lanes.
   supply, observed sample consumption, and outcome invariants for the pinned
   target. It is not a protocol theorem.
 - The executable Stwo adapter covers its deterministic demo component and
-  declared OODS-sample mutation paths, not other proof containers, every Stwo
-  component, or any production integration.
+  declared paths in sampled values, commitments, decommitment hash witnesses,
+  queried values, and the PoW nonce. Other proof containers, FRI internals,
+  query positions, configuration, every Stwo component, and production
+  integrations remain unsupported. The generic replay command validates a
+  bounded request against this same pinned target; it does not broaden target
+  coverage. A queried-values truncation currently records a verifier panic in
+  both layers and remains non-green.
 - The concrete exporter-faithfulness suite compares one synthetic
   cross-interaction AIR against Stwo's `AssertEvaluator`, checks a Stwo-generated
   LogUp trace against both implementations, and compares uncompressed relation

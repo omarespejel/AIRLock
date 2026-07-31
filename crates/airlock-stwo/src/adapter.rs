@@ -844,6 +844,78 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn additional_proof_container_mutations_execute_through_both_layers() {
+        let adapter = StwoBoundaryAdapter::new().expect("adapter");
+        let proof = &adapter.fixture.proof;
+        let (decommitment_tree, _) = proof
+            .0
+            .decommitments
+            .iter()
+            .enumerate()
+            .find(|(_, decommitment)| !decommitment.hash_witness.is_empty())
+            .expect("nonempty decommitment witness");
+        let (queried_tree, queried_column, _) = proof
+            .0
+            .queried_values
+            .iter()
+            .enumerate()
+            .find_map(|(tree, columns)| {
+                columns
+                    .iter()
+                    .enumerate()
+                    .find(|(_, values)| !values.is_empty())
+                    .map(|(column, values)| (tree, column, values))
+            })
+            .expect("nonempty queried-values column");
+
+        for (case_id, operation, expected_layer, expected_differential) in [
+            (
+                "drop-trace-commitment",
+                MutationOperation::Drop {
+                    path: BoundaryPath::new("commitments", vec![]),
+                    index: 0,
+                },
+                BoundaryVerdict::Rejected,
+                DifferentialVerdict::MutationRejected,
+            ),
+            (
+                "truncate-trace-decommitment",
+                MutationOperation::Truncate {
+                    path: BoundaryPath::new("decommitments.hash_witness", vec![decommitment_tree]),
+                    new_len: 0,
+                },
+                BoundaryVerdict::Rejected,
+                DifferentialVerdict::MutationRejected,
+            ),
+            (
+                "truncate-queried-values",
+                MutationOperation::Truncate {
+                    path: BoundaryPath::new("queried_values", vec![queried_tree, queried_column]),
+                    new_len: 0,
+                },
+                BoundaryVerdict::Panic,
+                DifferentialVerdict::Panic,
+            ),
+            (
+                "flip-query-pow-bit",
+                MutationOperation::ReplaceScalar {
+                    path: BoundaryPath::new("proof_of_work", vec![]),
+                    value: ScalarMutation::FlipBit { bit: 0 },
+                },
+                BoundaryVerdict::Rejected,
+                DifferentialVerdict::MutationRejected,
+            ),
+        ] {
+            let replay = adapter
+                .replay_mutation(case_id, vec![operation])
+                .expect("replay must record the verifier outcome");
+            assert_eq!(replay.raw_pcs.report.verdict, expected_layer, "{case_id}");
+            assert_eq!(replay.framework.report.verdict, expected_layer, "{case_id}");
+            assert_eq!(replay.verdict, expected_differential, "{case_id}");
+        }
+    }
+
     #[cfg(feature = "defective-verifier-mutant")]
     #[test]
     fn defective_truncating_verifier_makes_cardinality_oracle_fire() {
