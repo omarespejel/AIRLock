@@ -36,16 +36,28 @@ fail() {
 
 # Git exports repository-local variables to hooks. Clear them before querying
 # the sibling checkout so `git -C` cannot accidentally read AIRLock's objects.
+if ! GIT_LOCAL_ENV="$(git rev-parse --local-env-vars)"; then
+  fail "could not discover repository-local Git environment variables"
+fi
 while IFS= read -r variable; do
-  unset "$variable"
-done < <(git rev-parse --local-env-vars)
+  [[ -n "$variable" ]] && unset "$variable"
+done <<<"$GIT_LOCAL_ENV"
+unset GIT_LOCAL_ENV
+
+if command -v sha256sum >/dev/null 2>&1; then
+  SHA256=(sha256sum)
+elif command -v shasum >/dev/null 2>&1; then
+  SHA256=(shasum -a 256)
+else
+  fail "need sha256sum or shasum for SHA-256 verification"
+fi
 
 [[ -d "$STWO_DIR/.git" ]] || fail "missing sibling Stwo checkout at $STWO_DIR; run scripts/setup-stwo.sh"
 [[ -f "$ACCESSOR_PATCH" ]] || fail "missing checked accessor patch at $ACCESSOR_PATCH"
 [[ -f "$CONSUMPTION_PATCH" ]] || fail "missing checked consumption patch at $CONSUMPTION_PATCH"
-[[ "$(shasum -a 256 "$ACCESSOR_PATCH" | awk '{print $1}')" == "$REQUIRED_ACCESSOR_PATCH_SHA256" ]] ||
+[[ "$("${SHA256[@]}" "$ACCESSOR_PATCH" | awk '{print $1}')" == "$REQUIRED_ACCESSOR_PATCH_SHA256" ]] ||
   fail "accessor patch SHA-256 does not match the bound source identity"
-[[ "$(shasum -a 256 "$CONSUMPTION_PATCH" | awk '{print $1}')" == "$REQUIRED_CONSUMPTION_PATCH_SHA256" ]] ||
+[[ "$("${SHA256[@]}" "$CONSUMPTION_PATCH" | awk '{print $1}')" == "$REQUIRED_CONSUMPTION_PATCH_SHA256" ]] ||
   fail "consumption patch SHA-256 does not match the bound source identity"
 grep -Fqx "pub const STWO_SOURCE_ID: &str = \"$REQUIRED_SOURCE_ID\";" "$SOURCE_ID_FILE" ||
   fail "STWO_SOURCE_ID does not bind the required baseline and patch digests"

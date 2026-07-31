@@ -39,9 +39,14 @@ cd "$ROOT"
 # Git exports repository-local variables to hooks. Clear them before operating
 # on the isolated bare repository so a pre-push export cannot resolve refs in
 # the source checkout instead.
+if ! GIT_LOCAL_ENV="$(git rev-parse --local-env-vars)"; then
+  printf 'FAIL: could not discover repository-local Git environment variables\n' >&2
+  exit 1
+fi
 while IFS= read -r variable; do
-  unset "$variable"
-done < <(git rev-parse --local-env-vars)
+  [[ -n "$variable" ]] && unset "$variable"
+done <<<"$GIT_LOCAL_ENV"
+unset GIT_LOCAL_ENV
 
 if [[ -n "$(git status --porcelain --untracked-files=normal)" ]]; then
   printf 'FAIL: refusing to export a dirty working tree\n' >&2
