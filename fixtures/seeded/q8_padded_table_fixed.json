@@ -255,7 +255,7 @@
           "values_hash": "1dc1543e1875b2e4b78111da46479964596b0eeb420abbe7a533c382c8998411"
         }
       ],
-      "declared_max_constraint_log_degree_bound": 5,
+      "declared_max_constraint_log_degree_bound": 6,
       "contract": {
         "public_inputs": [],
         "public_claims": [],

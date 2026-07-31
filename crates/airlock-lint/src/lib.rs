@@ -7,6 +7,7 @@
 #![forbid(unsafe_code)]
 
 mod confinement;
+mod degree;
 mod encoder;
 mod logup;
 mod lookup;
@@ -16,6 +17,7 @@ mod runner;
 mod structure;
 
 pub use confinement::ConfinementCertificate;
+pub use degree::{base_degree, ext_degree, lint_declared_degree_bound, required_log_degree_bound};
 pub use encoder::lint_encoder_bounds;
 pub use logup::lint_logup_finalization;
 pub use lookup::{
