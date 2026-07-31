@@ -1,0 +1,78 @@
+# Runs the canonical local gate on every change so it is enforced rather than
+# manual. `scripts/verify-local.sh` is the single source of truth: this workflow
+# bootstraps the pinned sibling Stwo checkout and then delegates to it, so the
+# gate cannot drift from what contributors run locally.
+name: gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A stale run on an superseded push proves nothing.
+concurrency:
+  group: gate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    # The gate builds real Stwo proofs and seals a campaign; it needs headroom.
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out AIRLock
+        uses: actions/checkout@v4
+        with:
+          path: AIRLock
+
+      # rust-toolchain.toml pins the channel and components, so no version is
+      # restated here. Restating it would create a second pin that can drift.
+      - name: Install the pinned toolchain
+        working-directory: AIRLock
+        run: |
+          rustup show active-toolchain
+          rustup component add rustfmt clippy
+
+      - name: Cache cargo registry and build outputs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            AIRLock/target
+          key: gate-${{ runner.os }}-${{ hashFiles('AIRLock/Cargo.lock', 'AIRLock/rust-toolchain.toml') }}
+          restore-keys: gate-${{ runner.os }}-
+
+      # Creates ../stwo at the checked pin plus the checked accessor patch, and
+      # verifies the result before installing it. Refuses to replace an existing
+      # checkout, so it is safe to re-run.
+      - name: Bootstrap the pinned sibling Stwo checkout
+        working-directory: AIRLock
+        run: scripts/setup-stwo.sh
+
+      - name: Verify the Stwo pin independently
+        working-directory: AIRLock
+        run: scripts/verify-stwo-checkout.sh
+
+      - name: Canonical gate
+        working-directory: AIRLock
+        run: scripts/verify-local.sh
+
+      # `verify-local.sh` already runs the demo into a temp directory it deletes,
+      # so this second run is deliberate: it is the only way to retain the sealed
+      # campaign as a reviewable per-commit artifact without weakening the gate.
+      - name: Build and seal the offline demo campaign
+        working-directory: AIRLock
+        run: scripts/demo-airlock.sh "$RUNNER_TEMP/airlock-demo"
+
+      - name: Upload the campaign artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: airlock-campaign-${{ github.sha }}
+          path: ${{ runner.temp }}/airlock-demo
+          if-no-files-found: error
+          retention-days: 30
