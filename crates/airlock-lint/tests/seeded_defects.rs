@@ -413,6 +413,58 @@ fn confinement_search_skips_over_budget_candidate() {
 }
 
 #[test]
+fn rejected_candidate_is_charged_only_for_work_performed() {
+    const LARGE_PHYSICAL: u64 = 1 << 15;
+
+    let mut component = q8_variant(Q8Variant::Constrained);
+    component.log_size = 15;
+    component.domain_size = LARGE_PHYSICAL;
+    for column in &mut component.preprocessed {
+        column.physical_length = LARGE_PHYSICAL;
+        let values = column.values.as_mut().expect("concrete fixture values");
+        values.resize(LARGE_PHYSICAL as usize, 0);
+    }
+
+    // This 511-node guard fits the aggregate budget in the worst case, but it
+    // is zero on the first padding row. Charging its full scan up front would
+    // leave too little budget for the valid certificate that follows.
+    let mut early_zero_guard = BaseExpr::column("table_active");
+    for _ in 0..8 {
+        early_zero_guard = BaseExpr::Add {
+            lhs: Box::new(early_zero_guard.clone()),
+            rhs: Box::new(early_zero_guard),
+        };
+    }
+    component.constraints.insert(
+        0,
+        ConstraintDecl {
+            id: "expensive-early-rejection".into(),
+            expression: ExtExpr::FromBase {
+                inner: BaseExpr::Mul {
+                    lhs: Box::new(early_zero_guard),
+                    rhs: Box::new(BaseExpr::column("table_mult")),
+                },
+            },
+            row_support: RowSupport::All,
+            source_location: None,
+            semantic_claim: None,
+        },
+    );
+
+    let obligation = table_multiplicity_obligations(&component)
+        .into_iter()
+        .find(|obligation| obligation.relation == "SiLU")
+        .expect("SiLU obligation");
+    assert_eq!(
+        obligation
+            .certificate()
+            .expect("early rejection must not starve a later certificate")
+            .constraint_id,
+        "q8-table-mult-confinement"
+    );
+}
+
+#[test]
 fn confinement_certificate_fails_closed_on_oversized_expression() {
     let mut component = q8_variant(Q8Variant::Constrained);
     let mut guard = BaseExpr::constant(1);

@@ -94,28 +94,46 @@ pub(crate) fn confinement_certificate(
         {
             continue;
         }
-        let Some(guard_nodes) = guards.iter().try_fold(0u64, |total, guard| {
-            let nodes = u64::try_from(base_expression_complexity(guard)?).ok()?;
-            total.checked_add(nodes)
-        }) else {
+        let Some(guard_work) = guards
+            .iter()
+            .map(|guard| {
+                let nodes = u64::try_from(base_expression_complexity(guard)?).ok()?;
+                Some((*guard, nodes))
+            })
+            .collect::<Option<Vec<_>>>()
+        else {
             continue;
         };
-        if !reserve_evaluation_work(
-            &mut remaining_evaluation_steps,
-            guard_nodes,
-            physical_length - semantic_length,
-        ) {
+        let Some(worst_case_steps) = guard_work
+            .iter()
+            .try_fold(0u64, |total, (_, nodes)| total.checked_add(*nodes))
+            .and_then(|nodes| nodes.checked_mul(physical_length - semantic_length))
+        else {
+            continue;
+        };
+        if worst_case_steps > MAX_CONFINEMENT_EVALUATION_STEPS {
             continue;
         }
 
         // Every guard factor must be nonzero on every padding row. A product is
         // zero when any factor is zero, so one vanishing factor leaves the
-        // multiplicity unconstrained on that row.
-        let all_padding_guarded = (semantic_length..physical_length).all(|row| {
-            guards.iter().all(|guard| {
-                matches!(evaluate_base_at_row(guard, prep, row, physical_length), Some(value) if value != 0)
-            })
-        });
+        // multiplicity unconstrained on that row. Charge work as it occurs:
+        // reserving the worst case would let an early-rejected candidate starve
+        // a later valid certificate.
+        let mut all_padding_guarded = true;
+        'padding: for row in semantic_length..physical_length {
+            for (guard, nodes) in &guard_work {
+                if !charge_evaluation_work(&mut remaining_evaluation_steps, *nodes)
+                    || !matches!(
+                        evaluate_base_at_row(guard, prep, row, physical_length),
+                        Some(value) if value != 0
+                    )
+                {
+                    all_padding_guarded = false;
+                    break 'padding;
+                }
+            }
+        }
         if !all_padding_guarded {
             continue;
         }
@@ -192,11 +210,8 @@ fn expression_complexity(root: ExpressionRef<'_>) -> Option<usize> {
     Some(nodes)
 }
 
-fn reserve_evaluation_work(remaining: &mut u64, expression_nodes: u64, rows: u64) -> bool {
-    let Some(steps) = expression_nodes.checked_mul(rows) else {
-        return false;
-    };
-    let Some(updated) = remaining.checked_sub(steps) else {
+fn charge_evaluation_work(remaining: &mut u64, expression_nodes: u64) -> bool {
+    let Some(updated) = remaining.checked_sub(expression_nodes) else {
         return false;
     };
     *remaining = updated;
@@ -364,10 +379,10 @@ mod tests {
     #[test]
     fn evaluation_work_budget_is_global_and_fails_closed() {
         let mut remaining = MAX_CONFINEMENT_EVALUATION_STEPS;
-        assert!(reserve_evaluation_work(&mut remaining, 1, 1 << 23));
-        assert!(reserve_evaluation_work(&mut remaining, 1, 1 << 23));
+        assert!(charge_evaluation_work(&mut remaining, 1 << 23));
+        assert!(charge_evaluation_work(&mut remaining, 1 << 23));
         assert_eq!(remaining, 0);
-        assert!(!reserve_evaluation_work(&mut remaining, 1, 1));
-        assert!(!reserve_evaluation_work(&mut remaining, u64::MAX, 2));
+        assert!(!charge_evaluation_work(&mut remaining, 1));
+        assert!(!charge_evaluation_work(&mut remaining, u64::MAX));
     }
 }
