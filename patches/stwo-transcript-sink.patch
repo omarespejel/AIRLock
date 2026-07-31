@@ -1,0 +1,141 @@
+diff --git a/crates/stwo/Cargo.toml b/crates/stwo/Cargo.toml
+index eee7a17a..a0daddd1 100644
+--- a/crates/stwo/Cargo.toml
++++ b/crates/stwo/Cargo.toml
+@@ -26,6 +26,7 @@ parallel = ["rayon", "indexmap/rayon"]
+ slow-tests = []
+ tracing = []
+ airlock-consumption = ["std"]
++airlock-transcript = ["std"]
+ # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+ 
+ [dependencies]
+diff --git a/crates/stwo/src/core/pcs/mod.rs b/crates/stwo/src/core/pcs/mod.rs
+index c091ac16..7751bb28 100644
+--- a/crates/stwo/src/core/pcs/mod.rs
++++ b/crates/stwo/src/core/pcs/mod.rs
+@@ -17,6 +17,8 @@ pub use self::utils::TreeVec;
+ pub use self::verifier::CommitmentSchemeVerifier;
+ #[cfg(feature = "airlock-consumption")]
+ pub use self::verifier::ConsumptionSink;
++#[cfg(feature = "airlock-transcript")]
++pub use self::verifier::TranscriptSink;
+ use super::channel::Channel;
+ use super::fields::qm31::SecureField;
+ use super::fri::FriConfig;
+diff --git a/crates/stwo/src/core/pcs/verifier.rs b/crates/stwo/src/core/pcs/verifier.rs
+index 6c059354..254f96e1 100644
+--- a/crates/stwo/src/core/pcs/verifier.rs
++++ b/crates/stwo/src/core/pcs/verifier.rs
+@@ -28,6 +28,29 @@ pub trait ConsumptionSink {
+     fn record_sample_read(&mut self, tree: usize, column: usize, sample: usize);
+ }
+ 
++/// Receives one event for every transcript operation the PCS verifier performs.
++///
++/// The projection is deliberately narrow: proof-of-work verification, the nonce
++/// absorption that follows it, and the two draws that depend on it. FRI-internal
++/// folding challenges and commitment absorptions are not reported, so a consumer
++/// must treat the recorded trace as a projection rather than the whole transcript.
++#[cfg(feature = "airlock-transcript")]
++pub trait TranscriptSink {
++    /// Records that the nonce was read as a canonical fixed-width value.
++    ///
++    /// This is the only validation the verifier performs on the nonce before it
++    /// reaches the channel: a `u64` read is in-domain and canonically encoded by
++    /// construction. The substantive check is the proof-of-work verification
++    /// reported next, which at zero configured bits accepts every nonce.
++    fn record_nonce_encoding(&mut self, label: &str, nonce: u64);
++    /// Records the exact nonce checked by proof-of-work verification.
++    fn record_pow_verification(&mut self, label: &str, bits: u32, nonce: u64, accepted: bool);
++    /// Records an absorption of a proof-of-work nonce.
++    fn record_nonce_absorption(&mut self, label: &str, nonce: u64);
++    /// Records drawn query positions and the domain they index.
++    fn record_query_draw(&mut self, label: &str, domain_size: usize, positions: &[usize]);
++}
++
+ /// The verifier side of a FRI polynomial commitment scheme. See [super].
+ #[derive(Default)]
+ pub struct CommitmentSchemeVerifier<MC: MerkleChannel> {
+@@ -35,6 +58,8 @@ pub struct CommitmentSchemeVerifier<MC: MerkleChannel> {
+     pub config: PcsConfig,
+     #[cfg(feature = "airlock-consumption")]
+     consumption_sink: RefCell<Option<Box<dyn ConsumptionSink>>>,
++    #[cfg(feature = "airlock-transcript")]
++    transcript_sink: RefCell<Option<Box<dyn TranscriptSink>>>,
+ }
+ 
+ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
+@@ -44,6 +69,22 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
+             config,
+             #[cfg(feature = "airlock-consumption")]
+             consumption_sink: RefCell::new(None),
++            #[cfg(feature = "airlock-transcript")]
++            transcript_sink: RefCell::new(None),
++        }
++    }
++
++    /// Installs an observer for the transcript projection described on
++    /// [`TranscriptSink`].
++    #[cfg(feature = "airlock-transcript")]
++    pub fn set_transcript_sink(&mut self, sink: Box<dyn TranscriptSink>) {
++        *self.transcript_sink.get_mut() = Some(sink);
++    }
++
++    #[cfg(feature = "airlock-transcript")]
++    fn with_transcript_sink(&self, record: impl FnOnce(&mut dyn TranscriptSink)) {
++        if let Some(sink) = self.transcript_sink.borrow_mut().as_mut() {
++            record(sink.as_mut());
+         }
+     }
+ 
+@@ -90,7 +131,8 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
+         proof: CommitmentSchemeProof<MC::H>,
+         channel: &mut MC::C,
+     ) -> Result<(), VerificationError> {
+-        channel.mix_felts(&proof.sampled_values.clone().flatten_cols());
++        let flattened_sampled_values = proof.sampled_values.clone().flatten_cols();
++        channel.mix_felts(&flattened_sampled_values);
+         let random_coeff = channel.draw_secure_felt();
+         let lifting_log_size = self.trees.last().unwrap().height;
+         let bound =
+@@ -101,12 +143,38 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
+             FriVerifier::<MC>::commit(channel, self.config.fri_config, proof.fri_proof, bound)?;
+ 
+         // Verify proof of work.
+-        if !channel.verify_pow_nonce(self.config.pow_bits, proof.proof_of_work) {
++        #[cfg(feature = "airlock-transcript")]
++        self.with_transcript_sink(|sink| {
++            sink.record_nonce_encoding("proof_of_work", proof.proof_of_work);
++        });
++        let pow_accepted = channel.verify_pow_nonce(self.config.pow_bits, proof.proof_of_work);
++        #[cfg(feature = "airlock-transcript")]
++        self.with_transcript_sink(|sink| {
++            sink.record_pow_verification(
++                "query_pow",
++                self.config.pow_bits,
++                proof.proof_of_work,
++                pow_accepted,
++            );
++        });
++        if !pow_accepted {
+             return Err(VerificationError::ProofOfWork);
+         }
++        #[cfg(feature = "airlock-transcript")]
++        self.with_transcript_sink(|sink| {
++            sink.record_nonce_absorption("query_pow_nonce", proof.proof_of_work);
++        });
+         channel.mix_u64(proof.proof_of_work);
+         // Get FRI query positions.
+         let query_positions = fri_verifier.sample_query_positions(channel);
++        #[cfg(feature = "airlock-transcript")]
++        self.with_transcript_sink(|sink| {
++            sink.record_query_draw(
++                "fri_query_positions",
++                1 << lifting_log_size,
++                &query_positions,
++            );
++        });
+         let preprocessed_query_positions = prepare_preprocessed_query_positions(
+             &query_positions,
+             lifting_log_size,

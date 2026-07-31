@@ -6,6 +6,7 @@ STWO_DIR="$ROOT/../stwo"
 PATCHES=(
   "$ROOT/patches/stwo-relation-entry-accessors.patch"
   "$ROOT/patches/stwo-consumption-sink.patch"
+  "$ROOT/patches/stwo-transcript-sink.patch"
 )
 REQUIRED_COMMIT="f0d79b0fad440dcb0aaf1e20470fdbb37993ea2a"
 TMP_ROOT="$(mktemp -d "$ROOT/../.airlock-stwo-setup.XXXXXX")"

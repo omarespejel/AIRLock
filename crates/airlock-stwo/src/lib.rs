@@ -67,4 +67,4 @@ pub const STWO_DEMO_TARGET: &str = "stwo-demo-transition-v1";
 ///
 /// `scripts/verify-stwo-checkout.sh` independently checks that the sibling
 /// checkout equals this baseline plus AIRLock's two checked patches.
-pub const STWO_SOURCE_ID: &str = "stwo@f0d79b0fad440dcb0aaf1e20470fdbb37993ea2a+patches:accessor=7782a94a63a40e86b760d76dc37d2a6833921c5dfad5073b62972d640b90742a;consumption=cdef8d226336b766ceeeddcac410c535c1d669fce88081c58ddc8221371d9a23";
+pub const STWO_SOURCE_ID: &str = "stwo@f0d79b0fad440dcb0aaf1e20470fdbb37993ea2a+patches:accessor=7782a94a63a40e86b760d76dc37d2a6833921c5dfad5073b62972d640b90742a;consumption=cdef8d226336b766ceeeddcac410c535c1d669fce88081c58ddc8221371d9a23;transcript=da841076b861f00a1a128d5aaa49f092a36809d17bf43520fb25f1dafd2d1746";
