@@ -9,7 +9,7 @@ on:
   push:
     branches: [main]
 
-# A stale run on an superseded push proves nothing.
+# A stale run on a superseded push proves nothing.
 concurrency:
   group: gate-${{ github.ref }}
   cancel-in-progress: true
@@ -24,20 +24,25 @@ jobs:
     timeout-minutes: 90
     steps:
       - name: Check out AIRLock
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           path: AIRLock
 
-      # rust-toolchain.toml pins the channel and components, so no version is
-      # restated here. Restating it would create a second pin that can drift.
       - name: Install the pinned toolchain
         working-directory: AIRLock
         run: |
-          rustup show active-toolchain
-          rustup component add rustfmt clippy
+          toolchain="$(sed -n 's/^channel = "\([^"]*\)"/\1/p' rust-toolchain.toml)"
+          if [[ -z "$toolchain" ]] || [[ "$(printf '%s\n' "$toolchain" | wc -l)" != "1" ]]; then
+            printf 'rust-toolchain.toml must contain exactly one channel\n' >&2
+            exit 1
+          fi
+          rustup toolchain install "$toolchain" \
+            --profile minimal \
+            --component rustfmt \
+            --component clippy
 
       - name: Cache cargo registry and build outputs
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/registry
@@ -70,7 +75,7 @@ jobs:
 
       - name: Upload the campaign artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: airlock-campaign-${{ github.sha }}
           path: ${{ runner.temp }}/airlock-demo
