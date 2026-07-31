@@ -96,7 +96,8 @@ cargo +nightly-2026-01-15 run --locked --offline \
 
 # Execute a validated, source-pinned ReplayRequest JSON under the same bounded
 # worker policy. A non-green result still writes its evidence bundle but exits
-# unsuccessfully.
+# unsuccessfully. Generic request-file replay currently fails closed on non-Unix
+# hosts because atomic no-follow input opening is not implemented there.
 cargo +nightly-2026-01-15 run --locked --offline \
   -p airlock-stwo --bin airlock-stwo-demo -- \
   replay --request /tmp/replay-request.json \

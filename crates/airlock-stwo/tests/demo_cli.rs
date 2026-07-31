@@ -341,17 +341,16 @@ fn replay_command_rejects_fifo_before_worker_launch() {
     let request = parent.join("request.fifo");
     let bundle = parent.join("fifo-bundle");
     let marker = parent.join("worker-launched");
-    assert!(!marker.to_string_lossy().contains('\''));
     let worker_script = write_script(
         &parent,
         "sentinel-worker.sh",
-        format!("#!/bin/sh\n: > '{}'\nexit 97\n", marker.display()).as_bytes(),
+        b"#!/bin/sh\ncd \"$(dirname \"$0\")\" || exit 98\n: > worker-launched\nexit 97\n",
     );
-    let status = Command::new("mkfifo")
-        .arg(&request)
-        .status()
-        .expect("run mkfifo");
-    assert!(status.success(), "mkfifo must create the test input");
+    nix::unistd::mkfifo(
+        &request,
+        nix::sys::stat::Mode::S_IRUSR | nix::sys::stat::Mode::S_IWUSR,
+    )
+    .expect("create FIFO test input");
 
     let rejected = run(&[
         "replay",
