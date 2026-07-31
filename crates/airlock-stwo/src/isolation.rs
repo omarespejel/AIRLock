@@ -2,6 +2,8 @@
 
 use std::fs::File;
 use std::io::{Read, Write};
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::thread;
@@ -254,11 +256,19 @@ fn run_isolated_replay_inner(
         return Err(IsolatedReplayError::WorkerDigestMismatch);
     }
 
-    let mut child = Command::new(&copied_worker)
+    let mut command = Command::new(&copied_worker);
+    command
         .args(worker_args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+    // Put the worker in its own process group so a descendant cannot outlive the
+    // deadline while holding the captured pipes open. Killing only the direct
+    // child leaves such a grandchild attached to stdout, and the reader joins
+    // below would then block past the wall clock the caller asked for.
+    #[cfg(unix)]
+    command.process_group(0);
+    let mut child = command
         .spawn()
         .map_err(|error| IsolatedReplayError::Spawn(error.to_string()))?;
     let mut child_stdin = child
@@ -290,6 +300,9 @@ fn run_isolated_replay_inner(
             break (status, false);
         }
         if started.elapsed() >= timeout {
+            // Group first, then the direct child. The group signal is best effort;
+            // the child kill below is authoritative for this handle.
+            terminate_process_group(child.id());
             child
                 .kill()
                 .map_err(|error| IsolatedReplayError::Kill(error.to_string()))?;
@@ -557,3 +570,24 @@ pub enum IsolatedReplayError {
     #[error("invalid isolated replay record: {0}")]
     InvalidRecord(String),
 }
+
+/// Signal the worker's whole process group on timeout.
+///
+/// The worker is spawned with `process_group(0)`, so its process-group id equals
+/// its process id and a negative `kill` argument targets every descendant. This
+/// is best effort: it bounds the wall clock in the presence of grandchildren, and
+/// it is not an OS sandbox.
+#[cfg(unix)]
+fn terminate_process_group(pid: u32) {
+    let _ = Command::new("/bin/kill")
+        .arg("-KILL")
+        .arg(format!("-{pid}"))
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
+/// Non-Unix targets have no process groups; the direct child kill still applies.
+#[cfg(not(unix))]
+fn terminate_process_group(_pid: u32) {}

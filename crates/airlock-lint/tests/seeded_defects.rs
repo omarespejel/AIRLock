@@ -274,10 +274,10 @@ fn q8_annotation_only_repair_does_not_discharge_the_obligation() {
     let component = q8_variant(Q8Variant::AnnotationOnly);
     let findings = lint_component(&component, &LintOptions::default());
     assert!(
-        findings
-            .iter()
-            .any(|f| f.code == FindingCode::TableMultiplicityOutsideSemanticSupport
-                && f.severity == Severity::Critical),
+        findings.iter().any(
+            |f| f.code == FindingCode::TableMultiplicityOutsideSemanticSupport
+                && f.severity == Severity::Critical
+        ),
         "an annotation-only repair must not reach a pass state: {findings:?}"
     );
 }

@@ -234,10 +234,7 @@ pub fn lint_lookup_functionality(component: &ComponentManifest) -> Vec<Finding> 
         // supplied value count reaches the row loops below and aborts the process,
         // destroying the findings already computed.
         let bound = (key_vals.len() as u64).min(value_vals.len() as u64);
-        let semantic = keys
-            .semantic_length
-            .min(values.semantic_length)
-            .min(bound);
+        let semantic = keys.semantic_length.min(values.semantic_length).min(bound);
         let physical = keys
             .physical_length
             .max(values.physical_length)
