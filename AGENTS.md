@@ -50,6 +50,11 @@ claim.
 - `docs/DEMO.md`: supported 30-minute external demo flow and exact non-claims.
 - `docs/coverage.yaml`: explicit surface inventory.
 - `scripts/verify-local.sh`: canonical local release gate.
+- `scripts/export-review-bundle.sh`: internally verifiable reviewer archive.
+  Emits a git bundle, a manifest covering every reconstruction input including
+  its checker, and a `VERIFY.sh` that asserts the reconstructed `HEAD` equals the
+  recorded commit. The sender must share the outer archive hash through a trusted
+  channel; the archive does not prove authorship or trusted time by itself.
 - `.codex/START_HERE.md`: current handoff and read order.
 
 ## Working rules

@@ -22,6 +22,23 @@ green AIRLock report establishes whole-system STARK security.
 | Stwo `AuditEvaluator` exporter | landed (`airlock-export`); concrete differential checks cover one synthetic cross-interaction AIR |
 | cvc5 / Lean | later PRs |
 
+Share a reviewable snapshot with `scripts/export-review-bundle.sh out.tar.gz`.
+Send its SHA-256 through a trusted channel. A reviewer can then extract the
+archive and run `VERIFY.sh` to check payload integrity, commit identity, and
+reconstruction.
+
+```bash
+# First compare this digest exactly with the value received through the trusted
+# channel. Use sha256sum on Linux or shasum on macOS.
+sha256sum out.tar.gz
+shasum -a 256 out.tar.gz
+
+# Continue only after the outer digest matches.
+mkdir airlock-review-input
+tar -xzf out.tar.gz -C airlock-review-input
+./airlock-review-input/airlock-review/VERIFY.sh
+```
+
 See [docs/SPEC.md](docs/SPEC.md) and [docs/coverage.yaml](docs/coverage.yaml).
 The fail-closed boundary profiles are specified in
 [docs/PARAMETER_BOUNDARIES.md](docs/PARAMETER_BOUNDARIES.md).
