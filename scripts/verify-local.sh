@@ -63,6 +63,9 @@ AIRLOCK_STWO_DIR="$ROOT/../stwo" scripts/verify-stwo-checkout.sh
 cargo +"$TOOLCHAIN" fmt --all -- --check
 cargo +"$TOOLCHAIN" clippy --workspace --all-targets --locked -- -D warnings
 cargo +"$TOOLCHAIN" test --workspace --all-targets --locked
+cargo +"$TOOLCHAIN" test --locked -p airlock-stwo \
+  --features defective-verifier-mutant \
+  defective_truncating_verifier_makes_cardinality_oracle_fire
 
 FIXED_OUTPUT="$TMP_DIR/q8-fixed.log"
 cargo +"$TOOLCHAIN" run --quiet --locked -p airlock-cli -- air \

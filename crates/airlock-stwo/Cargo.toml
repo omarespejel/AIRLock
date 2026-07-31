@@ -7,6 +7,10 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Pinned Stwo integration and verifier-boundary demo adapter for AIRLock"
 
+[features]
+default = []
+defective-verifier-mutant = []
+
 [dependencies]
 airlock-boundary.workspace = true
 airlock-export.workspace = true

@@ -167,13 +167,22 @@ builds an honest proof, derives OODS sample requests from the verifier's
 component masks, applies generic structural or scalar mutations only within
 those sampled-value containers, and replays the case at both the raw PCS and
 ordinary framework layers. Its source identity is pinned to the checked Stwo
-baseline and accessor patch. For accepted runs, both layers' sample-consumption
-counts are reconstructed from the same pinned inner-PCS `zip` control flow;
-runtime outcomes come from the real verifier. This covers only the demo
+baseline plus the accessor and opt-in consumption-sink patches. Both layers'
+sample-consumption counts are recorded at the pinned PCS sample-read site by an
+observer that does not change the verifier transcript or verdict. Rejected or
+panicked executions retain any reads completed before failure; AIRLock never
+substitutes modeled counts. Runtime outcomes come from the real verifier. This covers only the demo
 component and OODS-sample paths. Commitments, decommitments, query values, PoW,
 FRI internals, other components, and production integrations remain outside
 the executable coverage claim. It does not claim protocol, transcript, FRI, or
 whole-system soundness.
+
+The adapter executes drop, truncate, duplicate, and swap operations against a
+real verifier-requested two-sample column. A byte-identical swap is rejected as
+a no-op rather than counted as coverage. The feature-gated
+`defective-verifier-mutant` target is a local known-bad verifier used only to
+prove that accepted cardinality mismatches make the generic oracle emit a
+counterexample. Its result is never classified as an upstream Stwo finding.
 
 The same crate defines a typed transcript trace. Every prover-controlled value
 must name its proof path and pass all validation rules declared for that path

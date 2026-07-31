@@ -53,6 +53,11 @@ scripts/verify-local.sh
 
 cargo +nightly-2026-01-15 test -p airlock-stwo --locked --offline
 
+# Prove that the generic cardinality oracle fires against the local known-bad mutant.
+cargo +nightly-2026-01-15 test -p airlock-stwo --locked --offline \
+  --features defective-verifier-mutant \
+  defective_truncating_verifier_makes_cardinality_oracle_fire
+
 # Exporter-faithfulness differential against Stwo's concrete evaluators.
 cargo +nightly-2026-01-15 test -p airlock-export \
   --test assert_evaluator_faithfulness --locked --offline
@@ -120,8 +125,9 @@ replay. Solver/Lean tracks remain separate lanes.
 ## Non-claims
 
 - `StaticPass` is not Circle-FRI / Fiat–Shamir security.
-- A green boundary report covers only the modeled request, supply, consumption,
-  and outcome invariants for the pinned target. It is not a protocol theorem.
+- A green boundary report covers only the verifier-derived request, actual proof
+  supply, observed sample consumption, and outcome invariants for the pinned
+  target. It is not a protocol theorem.
 - The executable Stwo adapter covers its deterministic demo component and
   declared OODS-sample mutation paths, not other proof containers, every Stwo
   component, or any production integration.

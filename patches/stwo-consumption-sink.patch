@@ -1,0 +1,85 @@
+diff --git a/crates/stwo/Cargo.toml b/crates/stwo/Cargo.toml
+index f328cc03..eee7a17a 100644
+--- a/crates/stwo/Cargo.toml
++++ b/crates/stwo/Cargo.toml
+@@ -27,0 +28 @@ tracing = []
++airlock-consumption = ["std"]
+diff --git a/crates/stwo/src/core/pcs/mod.rs b/crates/stwo/src/core/pcs/mod.rs
+index 748b6935..c091ac16 100644
+--- a/crates/stwo/src/core/pcs/mod.rs
++++ b/crates/stwo/src/core/pcs/mod.rs
+@@ -17,0 +18,2 @@ pub use self::verifier::CommitmentSchemeVerifier;
++#[cfg(feature = "airlock-consumption")]
++pub use self::verifier::ConsumptionSink;
+diff --git a/crates/stwo/src/core/pcs/verifier.rs b/crates/stwo/src/core/pcs/verifier.rs
+index eb5f41ce..6c059354 100644
+--- a/crates/stwo/src/core/pcs/verifier.rs
++++ b/crates/stwo/src/core/pcs/verifier.rs
+@@ -0,0 +1,2 @@
++#[cfg(feature = "airlock-consumption")]
++use core::cell::RefCell;
+@@ -3,0 +6,2 @@ use itertools::Itertools;
++#[cfg(feature = "airlock-consumption")]
++use std_shims::Box;
+@@ -19,0 +24,7 @@ use crate::core::ColumnVec;
++/// Receives one event for every OODS sample value read by the PCS verifier.
++#[cfg(feature = "airlock-consumption")]
++pub trait ConsumptionSink {
++    /// Records the exact verifier-derived location paired with a proof value.
++    fn record_sample_read(&mut self, tree: usize, column: usize, sample: usize);
++}
++
+@@ -24,0 +36,2 @@ pub struct CommitmentSchemeVerifier<MC: MerkleChannel> {
++    #[cfg(feature = "airlock-consumption")]
++    consumption_sink: RefCell<Option<Box<dyn ConsumptionSink>>>,
+@@ -31,0 +45,15 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
++            #[cfg(feature = "airlock-consumption")]
++            consumption_sink: RefCell::new(None),
++        }
++    }
++
++    /// Installs an observer for concrete OODS sample reads.
++    #[cfg(feature = "airlock-consumption")]
++    pub fn set_consumption_sink(&mut self, sink: Box<dyn ConsumptionSink>) {
++        *self.consumption_sink.get_mut() = Some(sink);
++    }
++
++    #[cfg(feature = "airlock-consumption")]
++    fn record_sample_read(&self, tree: usize, column: usize, sample: usize) {
++        if let Some(sink) = self.consumption_sink.borrow_mut().as_mut() {
++            sink.record_sample_read(tree, column, sample);
+@@ -118,6 +146,28 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
+-        let samples = sampled_points.zip_cols(proof.sampled_values).map_cols(
+-            |(sampled_points, sampled_values)| {
+-                zip(sampled_points, sampled_values)
+-                    .map(|(point, value)| PointSample { point, value })
+-                    .collect_vec()
+-            },
++        let samples = TreeVec::new(
++            sampled_points
++                .0
++                .into_iter()
++                .zip_eq(proof.sampled_values.0)
++                .enumerate()
++                .map(|(_tree_index, (point_columns, value_columns))| {
++                    point_columns
++                        .into_iter()
++                        .zip_eq(value_columns)
++                        .enumerate()
++                        .map(|(_column_index, (sampled_points, sampled_values))| {
++                            zip(sampled_points, sampled_values)
++                                .enumerate()
++                                .map(|(_sample_index, (point, value))| {
++                                    #[cfg(feature = "airlock-consumption")]
++                                    self.record_sample_read(
++                                        _tree_index,
++                                        _column_index,
++                                        _sample_index,
++                                    );
++                                    PointSample { point, value }
++                                })
++                                .collect_vec()
++                        })
++                        .collect_vec()
++                })
++                .collect_vec(),

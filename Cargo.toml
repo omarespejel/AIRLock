@@ -45,7 +45,7 @@ serde_yaml = "0.9"
 sha2 = "0.10"
 thiserror = "2.0"
 # Sibling Stwo checkout verified against the documented upstream source baseline.
-stwo = { path = "../stwo/crates/stwo", version = "2.2.0", default-features = false, features = ["std", "prover"] }
+stwo = { path = "../stwo/crates/stwo", version = "2.2.0", default-features = false, features = ["std", "prover", "airlock-consumption"] }
 stwo-constraint-framework = { path = "../stwo/crates/constraint-framework", version = "2.2.0", features = ["std", "prover"] }
 stwo-examples = { path = "../stwo/crates/examples", version = "2.2.0" }
 

@@ -1,7 +1,9 @@
 //! Real Stwo request derivation and differential verifier replay.
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::rc::Rc;
 
 use airlock_boundary::{
     BoundaryContract, BoundaryObservation, BoundaryPath, BoundaryReport, BoundaryVerdict, CaseKind,
@@ -13,7 +15,7 @@ use stwo::core::channel::{Blake2sM31Channel, Channel};
 use stwo::core::circle::CirclePoint;
 use stwo::core::fields::qm31::{SECURE_EXTENSION_DEGREE, SecureField};
 use stwo::core::pcs::utils::try_get_lifting_log_size;
-use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig};
+use stwo::core::pcs::{CommitmentSchemeVerifier, ConsumptionSink, PcsConfig};
 use stwo::core::vcs_lifted::blake2_merkle::Blake2sM31MerkleChannel;
 use stwo::core::verifier::{COMPOSITION_LOG_SPLIT, VerificationError, verify};
 use thiserror::Error;
@@ -185,6 +187,36 @@ impl StwoBoundaryAdapter {
         self.replay(&mutated.proof, CaseKind::Mutated, Some(mutated.plan))
     }
 
+    /// Exercise the generic cardinality oracle against an intentionally truncating local mutant.
+    #[cfg(feature = "defective-verifier-mutant")]
+    pub fn replay_defective_cardinality_mutant(
+        &self,
+        case_id: impl Into<String>,
+        operations: Vec<MutationOperation>,
+    ) -> Result<LayerReplay, StwoBoundaryError> {
+        let case_id = case_id.into();
+        let contract = self.contract()?;
+        let mutated = mutate_proof(&case_id, &self.fixture.proof, operations)?;
+        let supplied = supplied_counts(&mutated.proof);
+        let consumed = defective_truncating_consumption(&contract, &mutated.proof)?;
+        let observation = observation(
+            STWO_DEMO_TARGET,
+            &self.source_id,
+            &case_id,
+            "defective_cardinality_mutant",
+            CaseKind::Mutated,
+            Some(mutated.plan),
+            supplied,
+            consumed,
+            VerificationOutcome::Accepted,
+        );
+        let report = evaluate_boundary(&contract, &observation);
+        Ok(LayerReplay {
+            observation,
+            report,
+        })
+    }
+
     /// Locate the first concrete OODS sample for a deterministic corruption test.
     pub fn first_sampled_value_path(&self) -> Result<BoundaryPath, StwoBoundaryError> {
         for (tree_index, columns) in self.fixture.proof.0.sampled_values.iter().enumerate() {
@@ -200,6 +232,16 @@ impl StwoBoundaryAdapter {
         Err(StwoBoundaryError::MissingSampleValue)
     }
 
+    /// Locate the first proof column for which the verifier requests multiple OODS samples.
+    pub fn first_multi_sample_column_path(&self) -> Result<BoundaryPath, StwoBoundaryError> {
+        self.contract()?
+            .requested
+            .into_iter()
+            .find(|entry| entry.count > 1)
+            .map(|entry| entry.path)
+            .ok_or(StwoBoundaryError::MissingMultiSampleColumn)
+    }
+
     fn replay(
         &self,
         proof: &DemoProof,
@@ -212,14 +254,16 @@ impl StwoBoundaryAdapter {
             .map_or_else(|| "honest-baseline".to_owned(), |plan| plan.seed_id.clone());
         let supplied = supplied_counts(proof);
 
+        let raw_consumption = ObservedConsumption::default();
         let raw_outcome = capture_verifier(|| {
-            verify_raw_pcs(&self.fixture.component, self.fixture.config, proof.clone())
+            verify_raw_pcs(
+                &self.fixture.component,
+                self.fixture.config,
+                proof.clone(),
+                raw_consumption.clone(),
+            )
         });
-        let raw_consumed = if matches!(raw_outcome, VerificationOutcome::Accepted) {
-            consumed_by_pinned_zip(&contract.requested, &supplied)
-        } else {
-            vec![]
-        };
+        let raw_consumed = raw_consumption.counts();
         let raw_observation = observation(
             STWO_DEMO_TARGET,
             &self.source_id,
@@ -233,14 +277,16 @@ impl StwoBoundaryAdapter {
         );
         let raw_report = evaluate_boundary(&contract, &raw_observation);
 
+        let framework_consumption = ObservedConsumption::default();
         let framework_outcome = capture_verifier(|| {
-            verify_framework(&self.fixture.component, self.fixture.config, proof.clone())
+            verify_framework_observed(
+                &self.fixture.component,
+                self.fixture.config,
+                proof.clone(),
+                framework_consumption.clone(),
+            )
         });
-        let framework_consumed = if matches!(framework_outcome, VerificationOutcome::Accepted) {
-            consumed_by_pinned_zip(&contract.requested, &supplied)
-        } else {
-            vec![]
-        };
+        let framework_consumed = framework_consumption.counts();
         let framework_observation = observation(
             STWO_DEMO_TARGET,
             &self.source_id,
@@ -330,13 +376,28 @@ pub(crate) fn verify_framework(
     verify(&[component], verifier_channel, commitment_scheme, proof).map_err(VerifierFailure::from)
 }
 
+fn verify_framework_observed(
+    component: &dyn Component,
+    config: PcsConfig,
+    proof: DemoProof,
+    consumption: ObservedConsumption,
+) -> Result<(), VerifierFailure> {
+    let verifier_channel = &mut Blake2sM31Channel::default();
+    let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sM31MerkleChannel>::new(config);
+    commitment_scheme.set_consumption_sink(Box::new(consumption));
+    register_trace_commitments(component, &proof, verifier_channel, commitment_scheme)?;
+    verify(&[component], verifier_channel, commitment_scheme, proof).map_err(VerifierFailure::from)
+}
+
 fn verify_raw_pcs(
     component: &dyn Component,
     config: PcsConfig,
     proof: DemoProof,
+    consumption: ObservedConsumption,
 ) -> Result<(), VerifierFailure> {
     let verifier_channel = &mut Blake2sM31Channel::default();
     let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sM31MerkleChannel>::new(config);
+    commitment_scheme.set_consumption_sink(Box::new(consumption));
     register_trace_commitments(component, &proof, verifier_channel, commitment_scheme)?;
 
     let components = Components {
@@ -402,22 +463,64 @@ fn supplied_counts(proof: &DemoProof) -> Vec<CountAtPath> {
     supplied
 }
 
-fn consumed_by_pinned_zip(requested: &[CountAtPath], supplied: &[CountAtPath]) -> Vec<CountAtPath> {
-    let supplied = supplied
+#[cfg(feature = "defective-verifier-mutant")]
+fn defective_truncating_consumption(
+    contract: &BoundaryContract,
+    proof: &DemoProof,
+) -> Result<Vec<CountAtPath>, StwoBoundaryError> {
+    contract
+        .requested
         .iter()
-        .map(|entry| (entry.path.clone(), entry.count))
-        .collect::<BTreeMap<_, _>>();
-    requested
-        .iter()
-        .map(|entry| {
-            CountAtPath::new(
-                entry.path.clone(),
-                entry
-                    .count
-                    .min(supplied.get(&entry.path).copied().unwrap_or(0)),
-            )
+        .map(|request| {
+            let [tree, column] = request.path.indices.as_slice() else {
+                return Err(StwoBoundaryError::ReplayValidation(format!(
+                    "defective mutant received unsupported request path {:?}",
+                    request.path
+                )));
+            };
+            if request.path.field != "sampled_values" {
+                return Err(StwoBoundaryError::ReplayValidation(format!(
+                    "defective mutant received unsupported request field {}",
+                    request.path.field
+                )));
+            }
+            let values = proof
+                .0
+                .sampled_values
+                .get(*tree)
+                .and_then(|columns| columns.get(*column))
+                .ok_or_else(|| {
+                    StwoBoundaryError::ReplayValidation(format!(
+                        "defective mutant request path is out of bounds: {:?}",
+                        request.path
+                    ))
+                })?;
+            let count = (0..request.count).zip(values).count();
+            Ok(CountAtPath::new(request.path.clone(), count))
         })
         .collect()
+}
+
+#[derive(Clone, Default)]
+struct ObservedConsumption {
+    reads: Rc<RefCell<BTreeMap<BoundaryPath, usize>>>,
+}
+
+impl ObservedConsumption {
+    fn counts(&self) -> Vec<CountAtPath> {
+        self.reads
+            .borrow()
+            .iter()
+            .map(|(path, count)| CountAtPath::new(path.clone(), *count))
+            .collect()
+    }
+}
+
+impl ConsumptionSink for ObservedConsumption {
+    fn record_sample_read(&mut self, tree: usize, column: usize, _sample: usize) {
+        let path = BoundaryPath::new("sampled_values", vec![tree, column]);
+        *self.reads.borrow_mut().entry(path).or_default() += 1;
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -569,6 +672,9 @@ pub enum StwoBoundaryError {
     /// The fixture unexpectedly contains no opened OODS sample.
     #[error("honest Stwo proof contains no sampled value")]
     MissingSampleValue,
+    /// The component unexpectedly requests at most one OODS sample per proof column.
+    #[error("verifier request contains no multi-sample proof column")]
+    MissingMultiSampleColumn,
     /// Mutation could not be represented or applied.
     #[error(transparent)]
     Mutation(#[from] StwoMutationError),
@@ -579,7 +685,7 @@ pub enum StwoBoundaryError {
 
 #[cfg(test)]
 mod tests {
-    use airlock_boundary::{BoundaryPath, CountAtPath, MutationOperation, ScalarMutation};
+    use airlock_boundary::{BoundaryPath, MutationOperation, ScalarMutation};
 
     use super::*;
 
@@ -652,14 +758,122 @@ mod tests {
     }
 
     #[test]
-    fn pinned_zip_consumption_never_assumes_the_full_request() {
-        let path = BoundaryPath::new("sampled_values", vec![1, 0]);
-        let requested = vec![CountAtPath::new(path.clone(), 2)];
-        let supplied = vec![CountAtPath::new(path.clone(), 1)];
+    fn honest_consumption_is_observed_at_both_verifier_layers() {
+        let replay = StwoBoundaryAdapter::new()
+            .expect("adapter")
+            .replay_honest()
+            .expect("replay");
         assert_eq!(
-            consumed_by_pinned_zip(&requested, &supplied),
-            vec![CountAtPath::new(path, 1)]
+            replay.raw_pcs.observation.consumed,
+            replay.contract.requested
         );
+        assert_eq!(
+            replay.framework.observation.consumed,
+            replay.contract.requested
+        );
+    }
+
+    #[test]
+    fn missing_second_sample_fails_before_sample_consumption() {
+        let adapter = StwoBoundaryAdapter::new().expect("adapter");
+        let path = adapter
+            .first_multi_sample_column_path()
+            .expect("multi-sample path");
+        for (case_id, operation) in [
+            (
+                "drop-second-sample",
+                MutationOperation::Drop {
+                    path: path.clone(),
+                    index: 1,
+                },
+            ),
+            (
+                "truncate-second-sample",
+                MutationOperation::Truncate {
+                    path: path.clone(),
+                    new_len: 1,
+                },
+            ),
+        ] {
+            let replay = adapter
+                .replay_mutation(case_id, vec![operation])
+                .expect("replay");
+            assert_eq!(replay.raw_pcs.report.verdict, BoundaryVerdict::Rejected);
+            assert_eq!(count_at(&replay.raw_pcs.observation.consumed, &path), None);
+            assert_eq!(replay.framework.report.verdict, BoundaryVerdict::Panic);
+            assert_eq!(replay.verdict, DifferentialVerdict::Panic);
+        }
+    }
+
+    #[test]
+    fn duplicate_sample_does_not_produce_a_false_green() {
+        let adapter = StwoBoundaryAdapter::new().expect("adapter");
+        let path = adapter
+            .first_multi_sample_column_path()
+            .expect("multi-sample path");
+        let replay = adapter
+            .replay_mutation(
+                "duplicate-first-sample",
+                vec![MutationOperation::Duplicate { path, index: 0 }],
+            )
+            .expect("replay");
+        assert_ne!(replay.raw_pcs.report.verdict, BoundaryVerdict::Accepted);
+        assert_ne!(replay.framework.report.verdict, BoundaryVerdict::Accepted);
+        assert!(!replay.verdict.is_expected());
+    }
+
+    #[test]
+    fn byte_identical_sample_swap_is_rejected_as_a_noop() {
+        let adapter = StwoBoundaryAdapter::new().expect("adapter");
+        let path = adapter
+            .first_multi_sample_column_path()
+            .expect("multi-sample path");
+        let error = adapter
+            .replay_mutation(
+                "swap-two-equal-samples",
+                vec![MutationOperation::Swap {
+                    path,
+                    left: 0,
+                    right: 1,
+                }],
+            )
+            .expect_err("byte-identical mutation must not count as coverage");
+        assert!(matches!(
+            error,
+            StwoBoundaryError::Mutation(StwoMutationError::InvalidPlan(_))
+        ));
+    }
+
+    #[cfg(feature = "defective-verifier-mutant")]
+    #[test]
+    fn defective_truncating_verifier_makes_cardinality_oracle_fire() {
+        let adapter = StwoBoundaryAdapter::new().expect("adapter");
+        let path = adapter
+            .first_multi_sample_column_path()
+            .expect("multi-sample path");
+        let replay = adapter
+            .replay_defective_cardinality_mutant(
+                "mutant-drop-second-sample",
+                vec![MutationOperation::Drop {
+                    path: path.clone(),
+                    index: 1,
+                }],
+            )
+            .expect("mutant replay");
+        assert_eq!(replay.observation.outcome, VerificationOutcome::Accepted);
+        assert_eq!(replay.report.verdict, BoundaryVerdict::Counterexample);
+        assert_eq!(count_at(&replay.observation.supplied, &path), Some(1));
+        assert_eq!(count_at(&replay.observation.consumed, &path), Some(1));
+        assert!(replay.report.findings.iter().any(|finding| {
+            finding.code == airlock_boundary::BoundaryFindingCode::BoundaryCardinalityMismatch
+        }));
+    }
+
+    fn count_at(counts: &[CountAtPath], path: &BoundaryPath) -> Option<usize> {
+        counts
+            .iter()
+            .find(|entry| entry.path == *path)
+            .map(|entry| entry.count)
     }
 
     #[test]
