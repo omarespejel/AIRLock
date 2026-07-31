@@ -34,6 +34,8 @@ coverage surfaces.
 An export is not faithful enough for `COVERED` unless it retains:
 
 - uncompressed relation entries (name, role, tuple, multiplicity, row support, phase);
+  a relation's declared `row_support` is recorded as a claim and is never used as
+  the yardstick for checking itself;
 - an explicit relation-compression contract whose implementation is checked
   against the exported tuple;
 - preprocessed `semantic_length` vs `physical_length` plus concrete values **or**
@@ -353,9 +355,15 @@ cryptographic soundness or absence of defects elsewhere.
 
 ## Seeded defects
 
-1. Q8 padded `(0,0)` table with free multiplicity — must fail.
-2. Fixed Q8 with multiplicity confined to semantic rows — must not raise Q8 codes.
-3. Encoder abs_bound > biased 28-bit capacity — must fail High.
+1. Q8 padded `(0,0)` table with free multiplicity and `row_support: all` — must fail.
+2. Q8 with `row_support` narrowed to the semantic rows but **no confining
+   constraint** — must still fail. Narrowing a declaration adds no constraint, so
+   the same malicious witness remains available and the obligation is
+   undischarged.
+3. Q8 with a verifier-owned selector and the constraint
+   `(1 - table_active) * table_mult = 0` — must not raise Q8 codes. The discharge
+   is attributed to that constraint, reported as a confinement certificate.
+4. Encoder abs_bound > biased 28-bit capacity — must fail High.
 
 The parameter-boundary suite additionally tests domain and table lengths at
 `N-1`, `N`, and `N+1`, Stwo domain endpoints, support policies, content hashes,

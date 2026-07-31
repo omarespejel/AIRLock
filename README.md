@@ -15,7 +15,7 @@ green AIRLock report establishes whole-system STARK security.
 | Piece | State |
 | --- | --- |
 | AuditIR schema (`airlock-ir`) | landed |
-| Static gate (`airlock-lint`) | schema/shape + parameter/phase closure + preprocessed integrity + Q8 support/functionality + encoder bound + LogUp finalize |
+| Static gate (`airlock-lint`) | schema/shape + parameter/phase closure + preprocessed integrity + Q8 support/functionality (confinement requires a constraint-derived certificate, never an annotation) + encoder bound + LogUp finalize |
 | Verifier boundary contracts (`airlock-boundary`) | proof-neutral request/supply/consumption, typed transcript oracles, and exact witness-matrix contracts |
 | Pinned Stwo adapter (`airlock-stwo`) | real demo proof, verifier-derived OODS requests, sample-only mutations, raw-PCS/framework replay, phase-bound pre-commitment witness injection, one independently selected upstream Wide Fibonacci target, deterministic cross-target cell matrix, subprocess containment, verified replay bundles, generated Rust regression, sealed portable campaign |
 | CLI (`airlock`) | `air`, `coverage`, `schema` |
