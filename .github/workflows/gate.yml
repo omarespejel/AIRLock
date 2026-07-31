@@ -32,7 +32,8 @@ jobs:
         working-directory: AIRLock
         run: |
           toolchain="$(sed -n 's/^channel = "\([^"]*\)"/\1/p' rust-toolchain.toml)"
-          if [[ -z "$toolchain" ]] || [[ "$(printf '%s\n' "$toolchain" | wc -l)" != "1" ]]; then
+          channel_count="$(printf '%s\n' "$toolchain" | wc -l | tr -d '[:space:]')"
+          if [[ -z "$toolchain" ]] || [[ "$channel_count" != "1" ]]; then
             printf 'rust-toolchain.toml must contain exactly one channel\n' >&2
             exit 1
           fi
@@ -74,7 +75,6 @@ jobs:
         run: scripts/demo-airlock.sh "$RUNNER_TEMP/airlock-demo"
 
       - name: Upload the campaign artifact
-        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: airlock-campaign-${{ github.sha }}
