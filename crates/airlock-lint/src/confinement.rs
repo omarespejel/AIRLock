@@ -30,6 +30,9 @@ use airlock_ir::{
 
 /// M31 prime. Guard evaluation is exact in the base field.
 const P: u64 = (1 << 31) - 1;
+const MAX_CONFINEMENT_EXPRESSION_DEPTH: usize = 128;
+const MAX_CONFINEMENT_EXPRESSION_NODES: usize = 1 << 16;
+const MAX_CONFINEMENT_EVALUATION_STEPS: u64 = 1 << 24;
 
 /// Evidence that an AIR constraint confines a multiplicity to semantic support.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -52,7 +55,12 @@ pub(crate) fn confinement_certificate(
     if physical_length <= semantic_length {
         return None;
     }
+    base_expression_complexity(&relation.multiplicity)?;
+    let mut remaining_evaluation_steps = MAX_CONFINEMENT_EVALUATION_STEPS;
     for constraint in &component.constraints {
+        if ext_expression_complexity(&constraint.expression).is_none() {
+            continue;
+        }
         // The constraint must actually apply on the padding rows it is meant to
         // discharge; a constraint scoped away from them proves nothing there.
         if !row_support_covers(&constraint.row_support, semantic_length, physical_length) {
@@ -86,6 +94,19 @@ pub(crate) fn confinement_certificate(
         {
             continue;
         }
+        let Some(guard_nodes) = guards.iter().try_fold(0u64, |total, guard| {
+            let nodes = u64::try_from(base_expression_complexity(guard)?).ok()?;
+            total.checked_add(nodes)
+        }) else {
+            continue;
+        };
+        if !reserve_evaluation_work(
+            &mut remaining_evaluation_steps,
+            guard_nodes,
+            physical_length - semantic_length,
+        ) {
+            continue;
+        }
 
         // Every guard factor must be nonzero on every padding row. A product is
         // zero when any factor is zero, so one vanishing factor leaves the
@@ -112,6 +133,74 @@ pub(crate) fn confinement_certificate(
         });
     }
     None
+}
+
+enum ExpressionRef<'a> {
+    Base(&'a BaseExpr),
+    Ext(&'a ExtExpr),
+}
+
+fn base_expression_complexity(expression: &BaseExpr) -> Option<usize> {
+    expression_complexity(ExpressionRef::Base(expression))
+}
+
+fn ext_expression_complexity(expression: &ExtExpr) -> Option<usize> {
+    expression_complexity(ExpressionRef::Ext(expression))
+}
+
+fn expression_complexity(root: ExpressionRef<'_>) -> Option<usize> {
+    let mut nodes = 0usize;
+    let mut stack = vec![(root, 1usize)];
+    while let Some((expression, depth)) = stack.pop() {
+        nodes += 1;
+        if depth > MAX_CONFINEMENT_EXPRESSION_DEPTH || nodes > MAX_CONFINEMENT_EXPRESSION_NODES {
+            return None;
+        }
+        let child_depth = depth + 1;
+        match expression {
+            ExpressionRef::Base(BaseExpr::Add { lhs, rhs })
+            | ExpressionRef::Base(BaseExpr::Mul { lhs, rhs }) => {
+                stack.push((ExpressionRef::Base(rhs), child_depth));
+                stack.push((ExpressionRef::Base(lhs), child_depth));
+            }
+            ExpressionRef::Base(BaseExpr::Neg { inner })
+            | ExpressionRef::Base(BaseExpr::Inv { inner }) => {
+                stack.push((ExpressionRef::Base(inner), child_depth));
+            }
+            ExpressionRef::Ext(ExtExpr::Add { lhs, rhs })
+            | ExpressionRef::Ext(ExtExpr::Mul { lhs, rhs }) => {
+                stack.push((ExpressionRef::Ext(rhs), child_depth));
+                stack.push((ExpressionRef::Ext(lhs), child_depth));
+            }
+            ExpressionRef::Ext(ExtExpr::Neg { inner }) => {
+                stack.push((ExpressionRef::Ext(inner), child_depth));
+            }
+            ExpressionRef::Ext(ExtExpr::SecureCol { parts }) => {
+                for part in parts.iter().rev() {
+                    stack.push((ExpressionRef::Base(part), child_depth));
+                }
+            }
+            ExpressionRef::Ext(ExtExpr::FromBase { inner }) => {
+                stack.push((ExpressionRef::Base(inner), child_depth));
+            }
+            ExpressionRef::Base(
+                BaseExpr::Param { .. } | BaseExpr::Const { .. } | BaseExpr::Column { .. },
+            )
+            | ExpressionRef::Ext(ExtExpr::Param { .. } | ExtExpr::Const { .. }) => {}
+        }
+    }
+    Some(nodes)
+}
+
+fn reserve_evaluation_work(remaining: &mut u64, expression_nodes: u64, rows: u64) -> bool {
+    let Some(steps) = expression_nodes.checked_mul(rows) else {
+        return false;
+    };
+    let Some(updated) = remaining.checked_sub(steps) else {
+        return false;
+    };
+    *remaining = updated;
+    true
 }
 
 /// Whether every column in an expression is a verifier-owned phase-0 column.
@@ -265,5 +354,20 @@ fn collect_columns(expression: &BaseExpr, out: &mut Vec<String>) {
         }
         BaseExpr::Neg { inner } | BaseExpr::Inv { inner } => collect_columns(inner, out),
         BaseExpr::Const { .. } | BaseExpr::Param { .. } => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn evaluation_work_budget_is_global_and_fails_closed() {
+        let mut remaining = MAX_CONFINEMENT_EVALUATION_STEPS;
+        assert!(reserve_evaluation_work(&mut remaining, 1, 1 << 23));
+        assert!(reserve_evaluation_work(&mut remaining, 1, 1 << 23));
+        assert_eq!(remaining, 0);
+        assert!(!reserve_evaluation_work(&mut remaining, 1, 1));
+        assert!(!reserve_evaluation_work(&mut remaining, u64::MAX, 2));
     }
 }
