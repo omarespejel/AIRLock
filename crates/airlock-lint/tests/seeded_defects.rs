@@ -364,6 +364,70 @@ fn confinement_search_skips_unmodeled_constraints() {
 }
 
 #[test]
+fn confinement_search_skips_over_budget_candidate() {
+    const LARGE_PHYSICAL: u64 = 1 << 15;
+
+    let mut component = q8_variant(Q8Variant::Constrained);
+    component.log_size = 15;
+    component.domain_size = LARGE_PHYSICAL;
+    for column in &mut component.preprocessed {
+        column.physical_length = LARGE_PHYSICAL;
+        let values = column.values.as_mut().expect("concrete fixture values");
+        values.resize(LARGE_PHYSICAL as usize, 0);
+    }
+
+    let mut oversized_guard = BaseExpr::constant(1);
+    for _ in 0..10 {
+        oversized_guard = BaseExpr::Add {
+            lhs: Box::new(oversized_guard.clone()),
+            rhs: Box::new(oversized_guard),
+        };
+    }
+    component.constraints.insert(
+        0,
+        ConstraintDecl {
+            id: "over-budget-before-valid".into(),
+            expression: ExtExpr::FromBase {
+                inner: BaseExpr::Mul {
+                    lhs: Box::new(oversized_guard),
+                    rhs: Box::new(BaseExpr::column("table_mult")),
+                },
+            },
+            row_support: RowSupport::All,
+            source_location: None,
+            semantic_claim: None,
+        },
+    );
+
+    let obligation = table_multiplicity_obligations(&component)
+        .into_iter()
+        .find(|obligation| obligation.relation == "SiLU")
+        .expect("SiLU obligation");
+    assert_eq!(
+        obligation
+            .certificate()
+            .expect("later affordable constraint must still be considered")
+            .constraint_id,
+        "q8-table-mult-confinement"
+    );
+}
+
+#[test]
+fn confinement_certificate_fails_closed_on_oversized_expression() {
+    let mut component = q8_variant(Q8Variant::Constrained);
+    let mut guard = BaseExpr::constant(1);
+    for _ in 0..MAX_TEST_EXPRESSION_DEPTH {
+        guard = BaseExpr::Neg {
+            inner: Box::new(guard),
+        };
+    }
+    set_confinement_guard(&mut component, guard);
+    assert_silu_unconfined(&component);
+}
+
+const MAX_TEST_EXPRESSION_DEPTH: usize = 129;
+
+#[test]
 fn confinement_certificate_fails_closed_on_malformed_evidence() {
     let mut missing_values = q8_variant(Q8Variant::Constrained);
     missing_values
