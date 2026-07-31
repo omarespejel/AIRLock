@@ -45,7 +45,7 @@ The checked patch digests are:
 
 ```text
 7782a94a63a40e86b760d76dc37d2a6833921c5dfad5073b62972d640b90742a  patches/stwo-relation-entry-accessors.patch
-be3708dd459c3e17caa615ffcfc034b6b20b9ae4a996327f8ff8f2464145b3b3  patches/stwo-consumption-sink.patch
+cdef8d226336b766ceeeddcac410c535c1d669fce88081c58ddc8221371d9a23  patches/stwo-consumption-sink.patch
 ```
 
 `scripts/verify-stwo-checkout.sh` also checks that `STWO_SOURCE_ID` contains
