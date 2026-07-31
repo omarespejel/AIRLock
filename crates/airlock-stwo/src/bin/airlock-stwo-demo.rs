@@ -1,6 +1,6 @@
 //! Fail-closed command-line demo for pinned Stwo verifier-boundary replay.
 
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -443,10 +443,33 @@ fn run_case(request: ReplayRequest, args: RunArgs) -> Result<()> {
 }
 
 fn read_replay_request(path: &Path) -> Result<ReplayRequest> {
+    let path_metadata =
+        std::fs::symlink_metadata(path).with_context(|| format!("inspect {}", path.display()))?;
+    if path_metadata.file_type().is_symlink() || !path_metadata.file_type().is_file() {
+        bail!("replay request must be a non-symlink regular file");
+    }
+
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    }
+    let file = options
+        .open(path)
+        .with_context(|| format!("open {}", path.display()))?;
+    if !file
+        .metadata()
+        .with_context(|| format!("inspect opened {}", path.display()))?
+        .file_type()
+        .is_file()
+    {
+        bail!("replay request must be a non-symlink regular file");
+    }
+
     let mut bytes = Vec::new();
-    File::open(path)
-        .with_context(|| format!("open {}", path.display()))?
-        .take(MAX_REPLAY_REQUEST_BYTES + 1)
+    file.take(MAX_REPLAY_REQUEST_BYTES + 1)
         .read_to_end(&mut bytes)
         .with_context(|| format!("read {}", path.display()))?;
     if bytes.len() as u64 > MAX_REPLAY_REQUEST_BYTES {

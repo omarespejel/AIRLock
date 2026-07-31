@@ -336,6 +336,34 @@ fn replay_command_rejects_unknown_and_oversized_requests_before_execution() {
 
 #[cfg(unix)]
 #[test]
+fn replay_command_rejects_fifo_before_worker_launch() {
+    let parent = temp_parent("fifo-replay");
+    let request = parent.join("request.fifo");
+    let bundle = parent.join("fifo-bundle");
+    let status = Command::new("mkfifo")
+        .arg(&request)
+        .status()
+        .expect("run mkfifo");
+    assert!(status.success(), "mkfifo must create the test input");
+
+    let rejected = run(&[
+        "replay",
+        "--request",
+        as_str(&request),
+        "--worker",
+        as_str(&worker()),
+        "--output",
+        as_str(&bundle),
+    ]);
+    assert!(!rejected.status.success());
+    assert!(String::from_utf8_lossy(&rejected.stderr).contains("non-symlink regular file"));
+    assert!(!bundle.exists());
+
+    fs::remove_dir_all(parent).expect("remove CLI test directory");
+}
+
+#[cfg(unix)]
+#[test]
 fn valid_failure_record_does_not_pass_the_cli_gate() {
     let request = ReplayRequest::honest();
     let parent = temp_parent("failure");
