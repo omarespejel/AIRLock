@@ -150,4 +150,6 @@ if [[ "$(git rev-parse HEAD)" != "$CURRENT_COMMIT" ]]; then
 fi
 require_clean_tree
 
+scripts/test-export-review-bundle.sh
+
 printf 'AIRLOCK LOCAL GATE PASSED\n'
