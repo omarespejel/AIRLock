@@ -18,6 +18,7 @@ mod regression;
 mod replay_bundle;
 mod request;
 mod temp;
+mod transcript;
 mod witness;
 mod witness_matrix;
 
@@ -47,6 +48,10 @@ pub use replay_bundle::{
 };
 pub use request::{
     ReplayCase, ReplayRequest, ReplayRequestError, execute_replay_request, replay_request_sha256,
+};
+pub use transcript::{
+    FRI_QUERY_POSITIONS_DRAW, ObservedTranscriptRun, QUERY_POW, QUERY_POW_NONCE_ABSORPTION,
+    TranscriptObserveError, demo_transcript_contract, observe_demo_transcript,
 };
 pub use witness::{
     STWO_DEMO_WITNESS_TARGET, StwoWitnessAdapter, StwoWitnessError, StwoWitnessReplay,

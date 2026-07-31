@@ -50,8 +50,8 @@ surfaces:
     status: UNSUPPORTED
     note: "No signed publication, trusted timestamp, production component inventory, or cross-machine attestation."
   - name: stwo-transcript
-    status: UNSUPPORTED
-    note: "Typed recorder and generic ordering oracles exist; no executable Stwo transcript adapter is wired yet."
+    status: COVERED
+    note: "Scoped to one observed projection of the pinned verifier's query-phase transcript: the nonce read, the proof-of-work verification over it, the nonce absorption, and the FRI query-position draw. Events are reported by the checked transcript patch and never reconstructed from the proof or config. An exact contract over that projection is satisfied by a conventional pow_bits=10 profile and by a zero-work profile carrying the canonical zero nonce; at zero work with a prover-chosen nonzero nonce the unmodified verifier accepts while the oracle returns a Counterexample. Sampled-value absorption, the quotient coefficient draw, FRI folding challenges, statement and commitment absorption, and domain separation are outside the projection and remain unmodeled. This is transcript-ordering evidence over a named projection, not whole-transcript, Fiat-Shamir, or cryptographic soundness assurance."
   - name: warp-streaming
     status: UNSUPPORTED
     note: "No executable component adapter is available for this surface."

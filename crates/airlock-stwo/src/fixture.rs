@@ -115,6 +115,15 @@ pub(crate) fn transition_eval() -> TransitionEval {
     }
 }
 
+pub(crate) fn build_demo_verifier_with_config(config: PcsConfig) -> (DemoComponent, PcsConfig) {
+    let component = DemoComponent::new(
+        &mut TraceLocationAllocator::default(),
+        transition_eval(),
+        SecureField::zero(),
+    );
+    (component, config)
+}
+
 pub(crate) fn build_demo_verifier() -> (DemoComponent, PcsConfig) {
     let component = DemoComponent::new(
         &mut TraceLocationAllocator::default(),
@@ -124,8 +133,27 @@ pub(crate) fn build_demo_verifier() -> (DemoComponent, PcsConfig) {
     (component, PcsConfig::default())
 }
 
+/// Build the deterministic fixture under an explicit PCS configuration.
+///
+/// Used to exercise a zero-work profile, which the default configuration does not
+/// select. The configuration is verifier-owned; the proof's embedded copy is not
+/// trusted.
+pub(crate) fn build_demo_fixture_with_config(
+    witness: &[u32],
+    config: PcsConfig,
+) -> Result<DemoFixture, DemoFixtureBuildError> {
+    build_demo_fixture_inner(witness, Some(config))
+}
+
 pub(crate) fn build_demo_fixture_with_values(
     witness: &[u32],
+) -> Result<DemoFixture, DemoFixtureBuildError> {
+    build_demo_fixture_inner(witness, None)
+}
+
+fn build_demo_fixture_inner(
+    witness: &[u32],
+    config_override: Option<PcsConfig>,
 ) -> Result<DemoFixture, DemoFixtureBuildError> {
     let expected = 1usize << DEMO_LOG_ROWS;
     if witness.len() != expected {
@@ -140,7 +168,10 @@ pub(crate) fn build_demo_fixture_with_values(
         }
     }
 
-    let (component, config) = build_demo_verifier();
+    let (component, config) = match config_override {
+        Some(config) => build_demo_verifier_with_config(config),
+        None => build_demo_verifier(),
+    };
     let twiddles = CpuBackend::precompute_twiddles(
         CanonicCoset::new(DEMO_LOG_ROWS + 1 + config.fri_config.log_blowup_factor)
             .circle_domain()
