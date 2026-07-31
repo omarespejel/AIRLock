@@ -368,27 +368,39 @@ mod tests {
 
         let queried_path = first_nonempty_queried_values_path(&fixture.proof)
             .expect("nonempty queried-values column");
-        mutate_proof(
+        let queried = mutate_proof(
             "truncate-queried-values",
             &fixture.proof,
             vec![MutationOperation::Truncate {
-                path: queried_path,
+                path: queried_path.clone(),
                 new_len: 0,
             }],
         )
         .expect("queried-values mutation");
+        let [queried_tree, queried_column] = queried_path.indices.as_slice() else {
+            panic!("queried-values helper returned the wrong path shape");
+        };
+        assert!(queried.proof.0.queried_values[*queried_tree][*queried_column].is_empty());
 
         let decommitment_path = first_nonempty_decommitment_path(&fixture.proof)
             .expect("nonempty decommitment witness");
-        mutate_proof(
+        let decommitment = mutate_proof(
             "truncate-decommitment",
             &fixture.proof,
             vec![MutationOperation::Truncate {
-                path: decommitment_path,
+                path: decommitment_path.clone(),
                 new_len: 0,
             }],
         )
         .expect("decommitment mutation");
+        let [decommitment_tree] = decommitment_path.indices.as_slice() else {
+            panic!("decommitment helper returned the wrong path shape");
+        };
+        assert!(
+            decommitment.proof.0.decommitments[*decommitment_tree]
+                .hash_witness
+                .is_empty()
+        );
     }
 
     #[test]
