@@ -26,6 +26,12 @@ enum Q8Variant {
     Constrained,
 }
 
+/// Legacy two-way accessor kept for the many callers that only need a Q8-shaped
+/// component to mutate.
+///
+/// Note that **neither** variant passes the Q8 lints: `true` declares `all` row
+/// support and `false` narrows the declaration without adding a constraint. Use
+/// `q8_variant(Q8Variant::Constrained)` for the variant that is actually repaired.
 fn q8_component(vulnerable: bool) -> ComponentManifest {
     q8_variant(if vulnerable {
         Q8Variant::Vulnerable
