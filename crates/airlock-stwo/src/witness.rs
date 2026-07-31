@@ -68,13 +68,12 @@ impl StwoWitnessReplay {
 }
 
 fn canonical_audit_ir_sha256() -> Result<&'static str, StwoWitnessError> {
-    static DIGEST: OnceLock<Result<String, StwoWitnessError>> = OnceLock::new();
-    match DIGEST
-        .get_or_init(|| StwoWitnessAdapter::new().and_then(|adapter| adapter.audit_ir_sha256()))
-    {
-        Ok(digest) => Ok(digest),
-        Err(error) => Err(error.clone()),
+    static DIGEST: OnceLock<String> = OnceLock::new();
+    if let Some(digest) = DIGEST.get() {
+        return Ok(digest);
     }
+    let digest = StwoWitnessAdapter::new()?.audit_ir_sha256()?;
+    Ok(DIGEST.get_or_init(|| digest))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
