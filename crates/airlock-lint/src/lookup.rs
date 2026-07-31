@@ -173,18 +173,34 @@ fn semantic_support_for_table_relation<'a>(
     relation: &airlock_ir::RelationEntry,
     prep: &BTreeMap<&str, &'a PreprocessedColumn>,
 ) -> Option<SemanticSupport> {
+    let mut support = None;
     for expr in &relation.tuple {
         let BaseExpr::Column { id, .. } = expr else {
             continue;
         };
-        if let Some(column) = prep.get(id.as_str()) {
-            return Some(SemanticSupport {
-                semantic_length: column.semantic_length,
-                physical_length: column.physical_length.max(component.domain_size),
-            });
+        let column = prep.get(id.as_str())?;
+        let values = column.values.as_ref()?;
+        let physical_length = u64::try_from(values.len()).ok()?;
+        if physical_length == 0
+            || column.physical_length != physical_length
+            || component.domain_size != physical_length
+            || column.semantic_length > physical_length
+        {
+            return None;
         }
+        let candidate = SemanticSupport {
+            semantic_length: column.semantic_length,
+            physical_length,
+        };
+        if support.is_some_and(|existing: SemanticSupport| {
+            existing.semantic_length != candidate.semantic_length
+                || existing.physical_length != candidate.physical_length
+        }) {
+            return None;
+        }
+        support = Some(candidate);
     }
-    None
+    support
 }
 
 /// Render a declared row support for a finding message.

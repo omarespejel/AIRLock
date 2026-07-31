@@ -314,6 +314,136 @@ fn q8_constrained_repair_discharges_the_obligation() {
     assert!(silu.is_confined());
 }
 
+fn set_confinement_guard(component: &mut ComponentManifest, guard: BaseExpr) {
+    component.constraints[0].expression = ExtExpr::FromBase {
+        inner: BaseExpr::Mul {
+            lhs: Box::new(guard),
+            rhs: Box::new(BaseExpr::column("table_mult")),
+        },
+    };
+}
+
+fn assert_silu_unconfined(component: &ComponentManifest) {
+    let obligation = table_multiplicity_obligations(component)
+        .into_iter()
+        .find(|obligation| obligation.relation == "SiLU")
+        .expect("SiLU obligation");
+    assert!(
+        !obligation.is_confined(),
+        "malformed evidence must not certify confinement: {obligation:?}"
+    );
+}
+
+#[test]
+fn confinement_search_skips_unmodeled_constraints() {
+    let mut component = q8_variant(Q8Variant::Constrained);
+    component.constraints.insert(
+        0,
+        ConstraintDecl {
+            id: "unsupported-before-valid".into(),
+            expression: ExtExpr::Param {
+                name: "unsupported".into(),
+            },
+            row_support: RowSupport::All,
+            source_location: None,
+            semantic_claim: None,
+        },
+    );
+
+    let obligation = table_multiplicity_obligations(&component)
+        .into_iter()
+        .find(|obligation| obligation.relation == "SiLU")
+        .expect("SiLU obligation");
+    assert_eq!(
+        obligation
+            .certificate()
+            .expect("later modeled constraint must be considered")
+            .constraint_id,
+        "q8-table-mult-confinement"
+    );
+}
+
+#[test]
+fn confinement_certificate_fails_closed_on_malformed_evidence() {
+    let mut missing_values = q8_variant(Q8Variant::Constrained);
+    missing_values
+        .preprocessed
+        .iter_mut()
+        .find(|column| column.id == "table_active")
+        .expect("selector")
+        .values = None;
+    assert_silu_unconfined(&missing_values);
+
+    let mut zero_guard = q8_variant(Q8Variant::Constrained);
+    let selector = zero_guard
+        .preprocessed
+        .iter_mut()
+        .find(|column| column.id == "table_active")
+        .expect("selector");
+    selector.values = Some(vec![1; PHYSICAL as usize]);
+    assert_silu_unconfined(&zero_guard);
+
+    let mut parameter_guard = q8_variant(Q8Variant::Constrained);
+    set_confinement_guard(
+        &mut parameter_guard,
+        BaseExpr::Add {
+            lhs: Box::new(BaseExpr::constant(1)),
+            rhs: Box::new(BaseExpr::Neg {
+                inner: Box::new(BaseExpr::Param {
+                    name: "prover_guard".into(),
+                }),
+            }),
+        },
+    );
+    assert_silu_unconfined(&parameter_guard);
+
+    let mut witness_guard = q8_variant(Q8Variant::Constrained);
+    let declaration = witness_guard
+        .columns
+        .iter_mut()
+        .find(|column| column.id == "table_active")
+        .expect("selector declaration");
+    declaration.kind = ColumnKind::Witness;
+    declaration.commitment_phase = CommitmentPhase::Phase1Original;
+    assert_silu_unconfined(&witness_guard);
+
+    let mut scoped_away = q8_variant(Q8Variant::Constrained);
+    scoped_away.constraints[0].row_support = RowSupport::Range {
+        start: 0,
+        end: SEMANTIC,
+    };
+    assert_silu_unconfined(&scoped_away);
+
+    let mut wrapped_offset = q8_variant(Q8Variant::Constrained);
+    set_confinement_guard(
+        &mut wrapped_offset,
+        BaseExpr::Add {
+            lhs: Box::new(BaseExpr::constant(1)),
+            rhs: Box::new(BaseExpr::Neg {
+                inner: Box::new(BaseExpr::Column {
+                    id: "table_active".into(),
+                    offset: 1,
+                }),
+            }),
+        },
+    );
+    assert_silu_unconfined(&wrapped_offset);
+
+    let mut secure_upper_limb = q8_variant(Q8Variant::Constrained);
+    let ExtExpr::FromBase { inner } = secure_upper_limb.constraints[0].expression.clone() else {
+        panic!("fixture constraint must be base-field");
+    };
+    secure_upper_limb.constraints[0].expression = ExtExpr::SecureCol {
+        parts: [
+            inner,
+            BaseExpr::constant(1),
+            BaseExpr::constant(0),
+            BaseExpr::constant(0),
+        ],
+    };
+    assert_silu_unconfined(&secure_upper_limb);
+}
+
 /// The property that closes the class: holding the AIR fixed and editing only
 /// declared metadata must never improve the outcome.
 #[test]

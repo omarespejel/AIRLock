@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use airlock_boundary::{MutationOperation, ScalarMutation};
 use airlock_stwo::{
@@ -113,6 +113,29 @@ fn process_failure_timeout_and_malformed_output_are_not_expected() {
         malformed.termination,
         ProcessTermination::InvalidOutput { .. }
     ));
+    remove_test_dir(&parent);
+}
+
+#[cfg(unix)]
+#[test]
+fn deadline_covers_descendant_owned_output_pipes() {
+    let request = ReplayRequest::honest();
+    let parent = temp_parent("descendant-pipe");
+    let worker = write_script(
+        &parent,
+        "leader-exits.sh",
+        b"#!/bin/sh\nsleep 5 &\nexit 0\n",
+    );
+    let started = Instant::now();
+
+    let record = run_isolated_replay(&worker, &[], &request, Duration::from_millis(50))
+        .expect("deadline-bound replay record");
+
+    assert!(matches!(record.termination, ProcessTermination::TimedOut));
+    assert!(
+        started.elapsed() < Duration::from_secs(1),
+        "descendant-owned pipes must not outlive the caller deadline"
+    );
     remove_test_dir(&parent);
 }
 
