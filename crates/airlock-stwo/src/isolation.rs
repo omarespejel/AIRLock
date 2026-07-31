@@ -31,6 +31,10 @@ const MAX_WORKER_ARGS: usize = 16;
 const MAX_WORKER_ARG_BYTES: usize = 256;
 const MAX_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 const POLL_INTERVAL: Duration = Duration::from_millis(5);
+#[cfg(target_os = "linux")]
+const EXEC_BUSY_RETRY_LIMIT: usize = 3;
+#[cfg(target_os = "linux")]
+const EXEC_BUSY_RETRY_DELAY: Duration = Duration::from_millis(10);
 
 /// Hash and length of one captured byte stream.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -268,8 +272,7 @@ fn run_isolated_replay_inner(
     // below would then block past the wall clock the caller asked for.
     #[cfg(unix)]
     command.process_group(0);
-    let mut child = command
-        .spawn()
+    let mut child = spawn_private_worker(&mut command)
         .map_err(|error| IsolatedReplayError::Spawn(error.to_string()))?;
     let process_group_id = child.id();
     let mut child_stdin = child
@@ -404,6 +407,28 @@ fn run_isolated_replay_inner(
     };
     record.validate(request)?;
     Ok(record)
+}
+
+fn spawn_private_worker(command: &mut Command) -> std::io::Result<std::process::Child> {
+    #[cfg(target_os = "linux")]
+    {
+        for attempt in 0..=EXEC_BUSY_RETRY_LIMIT {
+            match command.spawn() {
+                Ok(child) => return Ok(child),
+                Err(error)
+                    if error.raw_os_error() == Some(libc::ETXTBSY)
+                        && attempt < EXEC_BUSY_RETRY_LIMIT =>
+                {
+                    thread::sleep(EXEC_BUSY_RETRY_DELAY);
+                }
+                Err(error) => return Err(error),
+            }
+        }
+        unreachable!("bounded worker spawn loop always returns");
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    command.spawn()
 }
 
 fn validate_replay_response(
