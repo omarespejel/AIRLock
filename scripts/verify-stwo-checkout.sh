@@ -7,7 +7,7 @@ ACCESSOR_PATCH="$ROOT/patches/stwo-relation-entry-accessors.patch"
 CONSUMPTION_PATCH="$ROOT/patches/stwo-consumption-sink.patch"
 REQUIRED_COMMIT="f0d79b0fad440dcb0aaf1e20470fdbb37993ea2a"
 REQUIRED_ACCESSOR_PATCH_SHA256="7782a94a63a40e86b760d76dc37d2a6833921c5dfad5073b62972d640b90742a"
-REQUIRED_CONSUMPTION_PATCH_SHA256="be3708dd459c3e17caa615ffcfc034b6b20b9ae4a996327f8ff8f2464145b3b3"
+REQUIRED_CONSUMPTION_PATCH_SHA256="cdef8d226336b766ceeeddcac410c535c1d669fce88081c58ddc8221371d9a23"
 REQUIRED_SOURCE_ID="stwo@$REQUIRED_COMMIT+patches:accessor=$REQUIRED_ACCESSOR_PATCH_SHA256;consumption=$REQUIRED_CONSUMPTION_PATCH_SHA256"
 SOURCE_ID_FILE="$ROOT/crates/airlock-stwo/src/lib.rs"
 ACCESSOR_TARGET="crates/constraint-framework/src/lib.rs"
@@ -26,8 +26,8 @@ REQUIRED_PATHS=(
   crates/examples/src/wide_fibonacci
 )
 TMP_ACCESSOR_PATCH="$(mktemp "${TMPDIR:-/tmp}/airlock-stwo-accessor-patch.XXXXXX")"
-TMP_CONSUMPTION_PATCH="$(mktemp "${TMPDIR:-/tmp}/airlock-stwo-consumption-patch.XXXXXX")"
-trap 'rm -f "$TMP_ACCESSOR_PATCH" "$TMP_CONSUMPTION_PATCH"' EXIT
+TMP_CONSUMPTION_INDEX="$(mktemp "${TMPDIR:-/tmp}/airlock-stwo-consumption-index.XXXXXX")"
+trap 'rm -f "$TMP_ACCESSOR_PATCH" "$TMP_CONSUMPTION_INDEX"' EXIT
 
 fail() {
     printf 'FAIL: %s\n' "$*" >&2
@@ -79,11 +79,19 @@ if ! cmp -s "$ACCESSOR_PATCH" "$TMP_ACCESSOR_PATCH"; then
   fail "Stwo accessor diff does not match $ACCESSOR_PATCH"
 fi
 
-git -C "$STWO_DIR" diff --no-ext-diff --binary --unified=0 --abbrev=8 -- \
-  "${CONSUMPTION_TARGETS[@]}" >"$TMP_CONSUMPTION_PATCH"
-if ! cmp -s "$CONSUMPTION_PATCH" "$TMP_CONSUMPTION_PATCH"; then
-  fail "Stwo consumption-sink diff does not match $CONSUMPTION_PATCH"
-fi
+GIT_INDEX_FILE="$TMP_CONSUMPTION_INDEX" git -C "$STWO_DIR" read-tree "$REQUIRED_COMMIT"
+GIT_INDEX_FILE="$TMP_CONSUMPTION_INDEX" git -C "$STWO_DIR" apply --cached --check \
+  "$CONSUMPTION_PATCH"
+GIT_INDEX_FILE="$TMP_CONSUMPTION_INDEX" git -C "$STWO_DIR" apply --cached \
+  "$CONSUMPTION_PATCH"
+for path in "${CONSUMPTION_TARGETS[@]}"; do
+  expected_object="$(
+    GIT_INDEX_FILE="$TMP_CONSUMPTION_INDEX" git -C "$STWO_DIR" rev-parse ":$path"
+  )"
+  actual_object="$(git -C "$STWO_DIR" hash-object "$STWO_DIR/$path")"
+  [[ "$actual_object" == "$expected_object" ]] || fail \
+    "Stwo consumption target $path does not equal the checked patch result"
+done
 
 printf 'PASS: Stwo dependency and held-out target sources at %s match upstream baseline %s plus the checked accessor and consumption patches\n' \
   "$actual_commit" "$REQUIRED_COMMIT"
