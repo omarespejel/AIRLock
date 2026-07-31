@@ -75,6 +75,13 @@ sample case, compiles and runs it offline, seals every payload digest and size,
 copies the complete coverage inventory, and freshly re-executes all eight
 cases.
 
+The demo binary also accepts a bounded, source-pinned `ReplayRequest` JSON via
+the `replay` command. It can exercise declared mutations of sampled values,
+commitments, decommitment hash witnesses, queried values, and the PoW nonce.
+This generic command is outside the fixed eight-case sealed campaign. It writes
+a verified bundle for non-green outcomes, then exits unsuccessfully so a panic,
+counterexample, timeout, or unsupported case cannot become a release pass.
+
 ## Evidence
 
 The output directory contains:

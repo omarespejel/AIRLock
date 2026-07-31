@@ -164,18 +164,36 @@ edits. Statically known no-op mutations are rejected; findings do not look up
 named historical defects. `airlock-boundary` remains proof-system neutral.
 `airlock-stwo` instantiates it against a deterministic real Stwo component: it
 builds an honest proof, derives OODS sample requests from the verifier's
-component masks, applies generic structural or scalar mutations only within
-those sampled-value containers, and replays the case at both the raw PCS and
-ordinary framework layers. Its source identity is pinned to the checked Stwo
+component masks, and applies typed mutations to sampled values, commitments,
+decommitment hash witnesses, queried values, or the PoW nonce before replaying
+the case at both the raw PCS and ordinary framework layers. Its source identity
+is pinned to the checked Stwo
 baseline plus the accessor and opt-in consumption-sink patches. Both layers'
 sample-consumption counts are recorded at the pinned PCS sample-read site by an
 observer that does not change the verifier transcript or verdict. Rejected or
 panicked executions retain any reads completed before failure; AIRLock never
-substitutes modeled counts. Runtime outcomes come from the real verifier. This covers only the demo
-component and OODS-sample paths. Commitments, decommitments, query values, PoW,
-FRI internals, other components, and production integrations remain outside
-the executable coverage claim. It does not claim protocol, transcript, FRI, or
-whole-system soundness.
+substitutes modeled counts. Runtime outcomes come from the real verifier. This
+covers only the demo component and the declared proof paths. Other
+decommitment fields, FRI internals, query positions, proof configuration, other
+components, and production integrations remain outside the executable coverage
+claim. It does not claim protocol, transcript, FRI, or whole-system soundness.
+Truncating a queried-values column currently records a panic in both verifier
+layers; that result is reproducible evidence but never green.
+
+The executable proof-mutation grammar is exact:
+
+| Proof path | Indices | Supported edit |
+| --- | --- | --- |
+| `commitments` | none | container edit |
+| `sampled_values` | tree, column | container edit |
+| `sampled_values` | tree, column, value | scalar edit |
+| `decommitments.hash_witness` | tree | container edit |
+| `queried_values` | tree, column | container edit |
+| `proof_of_work` | none | scalar edit |
+
+Container edits are drop, truncate, duplicate, and swap. Scalar edits are
+zero, one, maximum, increment, decrement, and bit flip. Every other path or
+index shape returns typed `UNSUPPORTED`; it cannot count as exercised coverage.
 
 The adapter executes drop, truncate, duplicate, and swap operations against a
 real verifier-requested two-sample column. A byte-identical swap is rejected as
@@ -310,9 +328,11 @@ runner is subprocess containment, not an OS sandbox. The bundle is deterministic
 and self-consistent, but it is not signed and therefore does not authenticate
 its producer.
 
-`airlock-stwo-demo` exposes honest replay, OODS-sample corruption, demo and
-held-out witness replay, bundle verification, and path-independent
-Rust-regression generation. Run commands
+`airlock-stwo-demo` exposes honest replay, OODS-sample corruption, a generic
+bounded `ReplayRequest` JSON command, demo and held-out witness replay, bundle
+verification, and path-independent Rust-regression generation. The generic
+command rejects oversized, unknown-field, wrong-source, and wrong-target
+requests before worker launch. Run commands
 exit successfully only when the replay bundle is internally consistent and its
 verdict matches the requested case. The verify command additionally requires a
 fresh execution with the supplied worker to reproduce the stored record
