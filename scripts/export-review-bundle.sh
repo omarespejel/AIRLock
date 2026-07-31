@@ -36,6 +36,13 @@ fi
 
 cd "$ROOT"
 
+# Git exports repository-local variables to hooks. Clear them before operating
+# on the isolated bare repository so a pre-push export cannot resolve refs in
+# the source checkout instead.
+while IFS= read -r variable; do
+  unset "$variable"
+done < <(git rev-parse --local-env-vars)
+
 if [[ -n "$(git status --porcelain --untracked-files=normal)" ]]; then
   printf 'FAIL: refusing to export a dirty working tree\n' >&2
   git status --short >&2
