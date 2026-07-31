@@ -86,6 +86,12 @@ impl DifferentialReplay {
                 "replay contract is not bound to the pinned demo target and source".to_owned(),
             ));
         }
+        let canonical_contract = StwoBoundaryAdapter::new()?.contract()?;
+        if self.contract != canonical_contract {
+            return Err(StwoBoundaryError::ReplayValidation(
+                "replay request differs from the verifier-derived component request".to_owned(),
+            ));
+        }
 
         for (expected_layer, layer) in [("raw_pcs", &self.raw_pcs), ("framework", &self.framework)]
         {
@@ -597,6 +603,31 @@ mod tests {
         assert!(replay.verdict.is_expected());
         assert_eq!(replay.raw_pcs.report.verdict, BoundaryVerdict::Accepted);
         assert_eq!(replay.framework.report.verdict, BoundaryVerdict::Accepted);
+    }
+
+    #[test]
+    fn self_consistently_rewritten_request_does_not_validate() {
+        let adapter = StwoBoundaryAdapter::new().expect("adapter");
+        let mut replay = adapter.replay_honest().expect("replay");
+        replay.contract.requested[0].count += 1;
+        replay.raw_pcs.report = evaluate_boundary(&replay.contract, &replay.raw_pcs.observation);
+        replay.framework.report =
+            evaluate_boundary(&replay.contract, &replay.framework.observation);
+        replay.verdict = classify(
+            replay.raw_pcs.observation.case_kind,
+            &replay.raw_pcs.report,
+            &replay.framework.report,
+        );
+
+        let error = replay
+            .validate()
+            .expect_err("non-canonical request must fail");
+        assert!(
+            error
+                .to_string()
+                .contains("verifier-derived component request"),
+            "{error}"
+        );
     }
 
     #[test]

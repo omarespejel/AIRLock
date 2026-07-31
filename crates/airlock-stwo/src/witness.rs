@@ -50,6 +50,12 @@ impl StwoWitnessReplay {
                 "witness replay is not bound to the pinned target and source".to_owned(),
             ));
         }
+        let canonical_audit_ir_sha256 = StwoWitnessAdapter::new()?.audit_ir_sha256()?;
+        if self.observation.audit_ir_sha256 != canonical_audit_ir_sha256 {
+            return Err(StwoWitnessError::InvalidReplay(
+                "witness AuditIR digest differs from the exported component".to_owned(),
+            ));
+        }
         let recomputed = evaluate_witness(&self.observation);
         if recomputed != self.report {
             return Err(StwoWitnessError::InvalidReplay(
@@ -485,5 +491,18 @@ mod tests {
             witness_sha256(&changed).expect("changed digest"),
             "91da262c96adc1716f37274d6614b77c8d6efdddce370d1946beb4415d81526b"
         );
+    }
+
+    #[test]
+    fn self_consistently_rewritten_audit_ir_digest_does_not_validate() {
+        let adapter = StwoWitnessAdapter::new().expect("adapter");
+        let mut replay = adapter.replay_honest().expect("replay");
+        replay.observation.audit_ir_sha256 = "aa".repeat(32);
+        replay.report = evaluate_witness(&replay.observation);
+
+        let error = replay
+            .validate()
+            .expect_err("non-canonical AuditIR digest must fail");
+        assert!(error.to_string().contains("exported component"), "{error}");
     }
 }
