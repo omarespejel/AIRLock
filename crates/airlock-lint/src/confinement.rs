@@ -23,7 +23,9 @@
 
 use std::collections::BTreeMap;
 
-use airlock_ir::{BaseExpr, ComponentManifest, ExtExpr, PreprocessedColumn, RelationEntry, RowSupport};
+use airlock_ir::{
+    BaseExpr, ComponentManifest, ExtExpr, PreprocessedColumn, RelationEntry, RowSupport,
+};
 
 /// M31 prime. Guard evaluation is exact in the base field.
 const P: u64 = (1 << 31) - 1;
@@ -129,7 +131,11 @@ fn row_support_covers(support: &RowSupport, rows: &[u64], physical_length: u64) 
 fn flatten_ext_product(expression: &ExtExpr) -> Option<Vec<&BaseExpr>> {
     let mut factors = Vec::new();
     push_ext_factors(expression, &mut factors)?;
-    if factors.is_empty() { None } else { Some(factors) }
+    if factors.is_empty() {
+        None
+    } else {
+        Some(factors)
+    }
 }
 
 fn push_ext_factors<'a>(expression: &'a ExtExpr, out: &mut Vec<&'a BaseExpr>) -> Option<()> {
