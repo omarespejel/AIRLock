@@ -188,8 +188,8 @@ impl StwoBoundaryAdapter {
     }
 
     /// Exercise the generic cardinality oracle against an intentionally truncating local mutant.
-    #[cfg(feature = "defective-verifier-mutant")]
-    pub fn replay_defective_cardinality_mutant(
+    #[cfg(all(test, feature = "defective-verifier-mutant"))]
+    fn replay_defective_cardinality_mutant(
         &self,
         case_id: impl Into<String>,
         operations: Vec<MutationOperation>,
@@ -463,7 +463,7 @@ fn supplied_counts(proof: &DemoProof) -> Vec<CountAtPath> {
     supplied
 }
 
-#[cfg(feature = "defective-verifier-mutant")]
+#[cfg(all(test, feature = "defective-verifier-mutant"))]
 fn defective_truncating_consumption(
     contract: &BoundaryContract,
     proof: &DemoProof,
