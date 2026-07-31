@@ -125,7 +125,7 @@ fn q8(vulnerable: bool) -> ComponentManifest {
                 generator_id: None,
             },
         ],
-        declared_max_constraint_log_degree_bound: Some(5),
+        declared_max_constraint_log_degree_bound: Some(if vulnerable { 5 } else { 6 }),
         contract: SemanticContract::default(),
         logup_finalized: true,
     }

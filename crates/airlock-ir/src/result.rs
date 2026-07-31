@@ -60,6 +60,12 @@ pub enum FindingCode {
     LogupNotFinalized,
     /// Declared degree bound underreports computed degree.
     DeclaredDegreeUnderreport,
+    /// A constrained component omits its declared degree bound.
+    MissingDeclaredDegreeBound,
+    /// A constraint contains a trace-dependent inverse and is not polynomial.
+    NonPolynomialConstraint,
+    /// Degree analysis overflowed or exceeded its complexity budget.
+    DegreeAnalysisIncomplete,
     /// Column lacks semantic annotation on a COVERED path.
     MissingSemanticAnnotation,
     /// Inverse without nonzero obligation.

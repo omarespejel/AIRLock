@@ -202,7 +202,11 @@ fn q8_variant(variant: Q8Variant) -> ComponentManifest {
             }
         }))
         .collect(),
-        declared_max_constraint_log_degree_bound: Some(5),
+        declared_max_constraint_log_degree_bound: Some(if variant == Q8Variant::Constrained {
+            6
+        } else {
+            5
+        }),
         contract: SemanticContract {
             reference_semantics_id: Some("q8-silu-table-v1".into()),
             assumptions: vec![

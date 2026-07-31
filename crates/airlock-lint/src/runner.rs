@@ -7,6 +7,7 @@ use airlock_ir::{
     SemanticType, Severity,
 };
 
+use crate::degree::lint_declared_degree_bound;
 use crate::encoder::lint_encoder_bounds;
 use crate::logup::lint_logup_finalization;
 use crate::lookup::{lint_lookup_functionality, lint_table_multiplicity_support};
@@ -32,6 +33,7 @@ pub fn lint_component(
     findings.extend(lint_table_multiplicity_support(component));
     findings.extend(lint_lookup_functionality(component));
     findings.extend(lint_encoder_bounds(component));
+    findings.extend(lint_declared_degree_bound(component));
     findings.extend(lint_logup_finalization(component));
     findings.extend(lint_parameter_contract(component));
 

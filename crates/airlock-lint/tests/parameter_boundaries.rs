@@ -97,6 +97,10 @@ fn component_at_log_size(log_size: u32) -> ComponentManifest {
         source_location: None,
         semantic_claim: None,
     }];
+    // The declared bound must track `log_size`: a degree-1 constraint over a
+    // 2^log_size trace needs exactly `log_size`, so a fixed bound inherited from
+    // `valid_component` would understate it at the large endpoint.
+    component.declared_max_constraint_log_degree_bound = Some(log_size);
     component
 }
 
