@@ -115,6 +115,15 @@ pub(crate) fn transition_eval() -> TransitionEval {
     }
 }
 
+pub(crate) fn build_demo_verifier() -> (DemoComponent, PcsConfig) {
+    let component = DemoComponent::new(
+        &mut TraceLocationAllocator::default(),
+        transition_eval(),
+        SecureField::zero(),
+    );
+    (component, PcsConfig::default())
+}
+
 pub(crate) fn build_demo_fixture_with_values(
     witness: &[u32],
 ) -> Result<DemoFixture, DemoFixtureBuildError> {
@@ -131,7 +140,7 @@ pub(crate) fn build_demo_fixture_with_values(
         }
     }
 
-    let config = PcsConfig::default();
+    let (component, config) = build_demo_verifier();
     let twiddles = CpuBackend::precompute_twiddles(
         CanonicCoset::new(DEMO_LOG_ROWS + 1 + config.fri_config.log_blowup_factor)
             .circle_domain()
@@ -159,11 +168,6 @@ pub(crate) fn build_demo_fixture_with_values(
     tree_builder.extend_evals(trace);
     tree_builder.commit(prover_channel);
 
-    let component = DemoComponent::new(
-        &mut TraceLocationAllocator::default(),
-        transition_eval(),
-        SecureField::zero(),
-    );
     let proof = match prove::<CpuBackend, Blake2sM31MerkleChannel>(
         &[&component],
         prover_channel,

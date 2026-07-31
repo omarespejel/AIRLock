@@ -18,7 +18,7 @@ use stwo::core::vcs_lifted::blake2_merkle::Blake2sM31MerkleChannel;
 use stwo::core::verifier::{COMPOSITION_LOG_SPLIT, VerificationError, verify};
 use thiserror::Error;
 
-use crate::fixture::{DemoFixture, DemoProof, build_demo_fixture};
+use crate::fixture::{DemoFixture, DemoProof, build_demo_fixture, build_demo_verifier};
 use crate::mutation::{StwoMutationError, mutate_proof};
 use crate::{STWO_DEMO_TARGET, STWO_SOURCE_ID};
 
@@ -86,7 +86,9 @@ impl DifferentialReplay {
                 "replay contract is not bound to the pinned demo target and source".to_owned(),
             ));
         }
-        let canonical_contract = StwoBoundaryAdapter::new()?.contract()?;
+        let (component, config) = build_demo_verifier();
+        let canonical_contract =
+            derive_component_contract(STWO_DEMO_TARGET, STWO_SOURCE_ID, &component, config)?;
         if self.contract != canonical_contract {
             return Err(StwoBoundaryError::ReplayValidation(
                 "replay request differs from the verifier-derived component request".to_owned(),
