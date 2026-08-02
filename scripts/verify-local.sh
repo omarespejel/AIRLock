@@ -67,6 +67,12 @@ cargo +"$TOOLCHAIN" test --locked -p airlock-stwo \
   --features defective-verifier-mutant \
   defective_truncating_verifier_makes_cardinality_oracle_fire
 
+# The transcript projection must produce a counterexample against the pinned
+# verifier with no mutant feature enabled. Naming it separately keeps that
+# property visible in the gate log rather than buried in the workspace run.
+cargo +"$TOOLCHAIN" test --locked -p airlock-stwo --test observed_transcript
+printf 'PASS: observed transcript projection fires on unmodified pinned Stwo\n'
+
 FIXED_OUTPUT="$TMP_DIR/q8-fixed.log"
 cargo +"$TOOLCHAIN" run --quiet --locked -p airlock-cli -- air \
   --manifest fixtures/seeded/q8_padded_table_fixed.json >"$FIXED_OUTPUT" 2>&1

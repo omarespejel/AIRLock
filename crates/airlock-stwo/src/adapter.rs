@@ -389,6 +389,20 @@ fn verify_framework_observed(
     verify(&[component], verifier_channel, commitment_scheme, proof).map_err(VerifierFailure::from)
 }
 
+/// Verify through the ordinary framework path with a transcript sink installed.
+pub(crate) fn verify_framework_observed_transcript(
+    component: &dyn Component,
+    config: PcsConfig,
+    proof: DemoProof,
+    transcript: crate::transcript::ObservedTranscript,
+) -> Result<(), VerifierFailure> {
+    let verifier_channel = &mut Blake2sM31Channel::default();
+    let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sM31MerkleChannel>::new(config);
+    commitment_scheme.set_transcript_sink(Box::new(transcript));
+    register_trace_commitments(component, &proof, verifier_channel, commitment_scheme)?;
+    verify(&[component], verifier_channel, commitment_scheme, proof).map_err(VerifierFailure::from)
+}
+
 fn verify_raw_pcs(
     component: &dyn Component,
     config: PcsConfig,

@@ -18,6 +18,7 @@ mod regression;
 mod replay_bundle;
 mod request;
 mod temp;
+mod transcript;
 mod witness;
 mod witness_matrix;
 
@@ -48,6 +49,10 @@ pub use replay_bundle::{
 pub use request::{
     ReplayCase, ReplayRequest, ReplayRequestError, execute_replay_request, replay_request_sha256,
 };
+pub use transcript::{
+    FRI_QUERY_POSITIONS_DRAW, ObservedTranscriptRun, QUERY_POW, QUERY_POW_NONCE_ABSORPTION,
+    TranscriptObserveError, demo_transcript_contract, observe_demo_transcript,
+};
 pub use witness::{
     STWO_DEMO_WITNESS_TARGET, StwoWitnessAdapter, StwoWitnessError, StwoWitnessReplay,
 };
@@ -66,5 +71,5 @@ pub const STWO_DEMO_TARGET: &str = "stwo-demo-transition-v1";
 /// Stable source identity used in boundary artifacts.
 ///
 /// `scripts/verify-stwo-checkout.sh` independently checks that the sibling
-/// checkout equals this baseline plus AIRLock's two checked patches.
-pub const STWO_SOURCE_ID: &str = "stwo@f0d79b0fad440dcb0aaf1e20470fdbb37993ea2a+patches:accessor=7782a94a63a40e86b760d76dc37d2a6833921c5dfad5073b62972d640b90742a;consumption=cdef8d226336b766ceeeddcac410c535c1d669fce88081c58ddc8221371d9a23";
+/// checkout equals this baseline plus AIRLock's three checked patches.
+pub const STWO_SOURCE_ID: &str = "stwo@f0d79b0fad440dcb0aaf1e20470fdbb37993ea2a+patches:accessor=7782a94a63a40e86b760d76dc37d2a6833921c5dfad5073b62972d640b90742a;consumption=cdef8d226336b766ceeeddcac410c535c1d669fce88081c58ddc8221371d9a23;transcript=b3552824e625e11c1a4da708669bd78284f2cf10ace5c21d8fd6b6bd164696f3";

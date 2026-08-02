@@ -16,7 +16,7 @@ AIRLock is **not** a whole-system STARK soundness verifier.
 | Statement binding | separate | `OUT_OF_MODEL` |
 | Verifier boundary | `airlock-boundary`, `airlock-stwo` | contracts, one pinned executable integration adapter, and its replay records |
 | Witness consistency | `airlock-boundary`, `airlock-stwo` | one original-phase demo column plus one independently selected upstream three-column held-out target; separate AuditIR evaluation, real proof regeneration, and full verifier replay when proof generation succeeds |
-| Protocol / FRI / FS | `airlock-boundary` | typed transcript contract/oracle only; executable transcript capture remains `UNINSTANTIATED` |
+| Protocol / FRI / FS | `airlock-boundary`, `airlock-stwo` | typed transcript contract/oracle, plus one executable capture over a named query-phase projection of the pinned verifier; whole-transcript, Fiat--Shamir, and FRI assurance remain `UNINSTANTIATED` |
 | Evidence / provenance | separate | `NOT_RUN`; replay bundles do not establish authorship or external provenance |
 
 ## Coverage statuses
@@ -218,9 +218,37 @@ does not silently promote one policy into a vulnerability.
 
 Absorbed values and challenge outputs are recorded by canonical SHA-256
 digests; nonce bytes and query positions are retained directly. The complete
-ordered trace is content addressed. This is an evidence and
-ordering contract only. The executable adapter and any Fiat--Shamir security
-reduction remain separate work.
+ordered trace is content addressed. This is an evidence and ordering contract
+only; a Fiat--Shamir security reduction remains separate work.
+
+One executable capture is wired, and its projection is the whole of its claim.
+`crates/airlock-stwo/src/transcript.rs` installs a sink on the patched pinned
+verifier and records four sites: the nonce read, the proof-of-work verification
+over it, the nonce absorption, and the FRI query-position draw. Events are
+reported by the checked transcript patch, never reconstructed from the proof or
+configuration, so a dropped hook appears as a missing event rather than as a
+supplied one. The contract declares the expected schedule, nonce path validation,
+absorption cardinality, and query shape independently of any run.
+
+Within that projection the capture produces a counterexample against the
+unmodified pinned verifier. `verify_pow_nonce` accepts when the leading-zero
+count is at least the configured bits, so at zero configured bits every nonce is
+accepted and then absorbed before query positions are drawn. A conventional
+ten-bit profile and a zero-work profile carrying the canonical zero nonce both
+satisfy the contract; a zero-work profile carrying a prover-chosen nonce is
+accepted by the verifier and rejected by the oracle. This is conditional on an
+operator configuring zero work and is not a claim about the default profile.
+
+Sampled-value absorption, the quotient coefficient draw, FRI folding challenges,
+statement and commitment absorption, and domain separation are outside the
+projection. Across lanes this capture changes only the protocol lane: no AIR or
+AuditIR claim follows from a transcript observation, statement binding stays
+`OUT_OF_MODEL`, and the evidence it produces is one unsigned content-addressed
+trace per case. The sampled-value exclusion is a judgement call recorded in the
+module documentation: the pinned verifier absorbs those values before their shape
+is reconciled, which matches review rule 3, but no attacker advantage we have
+identified follows from the ordering, and the concrete panic consequence is already observed in the
+verifier-boundary lane.
 
 ## Phase-bound witness replay
 
@@ -365,8 +393,9 @@ The summary and manifest are deterministic for identical executions. They
 contain no timestamps or local paths. The source commit remains a
 caller-supplied pin; the unsigned campaign does not prove authorship, trusted
 publication time, machine identity, broad Stwo coverage, or cryptographic
-soundness. Statement binding and executable transcript, Fiat--Shamir, and FRI
-assurance remain unsupported and appear beside the successful cases.
+soundness. Statement binding, whole-transcript, Fiat--Shamir, and FRI assurance
+remain unsupported and appear beside the successful cases; the executable
+transcript capture covers only its declared query-phase projection.
 
 ## External demo surface
 

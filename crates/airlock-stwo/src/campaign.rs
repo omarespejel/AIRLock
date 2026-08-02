@@ -779,7 +779,7 @@ fn validate_coverage(bytes: &[u8]) -> Result<(), CampaignError> {
         ("stwo-demo-campaign-artifact", CoverageStatus::Covered),
         ("stwo-verifier-boundary", CoverageStatus::Unsupported),
         ("broad-evidence-provenance", CoverageStatus::Unsupported),
-        ("stwo-transcript", CoverageStatus::Unsupported),
+        ("stwo-transcript", CoverageStatus::Covered),
     ] {
         let actual = coverage
             .surfaces
