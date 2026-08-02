@@ -19,19 +19,20 @@
 //! `zip_eq`. That ordering is exactly the pattern `AGENTS.md` review rule 3 names:
 //! prover-controlled data influencing a transcript before its shape is validated.
 //!
-//! It is excluded anyway, for two reasons. First, no exploit follows from the
-//! ordering itself: the prover already chooses those field element values freely,
-//! so validating their shape earlier removes no grinding freedom over the
-//! coefficient drawn next. Second, the concrete consequence of a shape mismatch
-//! is a panic rather than a typed rejection, and that is already observed and
-//! disclosed elsewhere -- the `truncate-second-sample` case in `adapter.rs`
-//! records `BoundaryVerdict::Panic` for a `sampled_values` truncation.
+//! It is excluded anyway, for two reasons. First, no acceptance-impacting exploit
+//! is known to follow from the ordering itself: the prover already chooses those
+//! field element values freely, so validating their shape earlier removes no
+//! grinding freedom over the coefficient drawn next. Second, the concrete
+//! consequence of a shape mismatch is a panic rather than a typed rejection, and
+//! that is already observed and disclosed elsewhere -- the `truncate-second-sample`
+//! case in `adapter.rs` records `BoundaryVerdict::Panic` for a `sampled_values`
+//! truncation.
 //!
 //! So modeling the absorption here would emit a `ProverDataUsedBeforeValidation`
-//! counterexample carrying no attacker capability, on a class already covered by
-//! another lane. The ordering is recorded as a limitation instead of asserted as a
-//! finding. If someone later shows the shape freedom yields grinding advantage,
-//! this exclusion is the thing to revisit.
+//! counterexample carrying no attacker advantage we have identified, on a class
+//! already covered by another lane. The ordering is recorded as a limitation
+//! instead of asserted as a finding. If someone later shows the shape freedom
+//! yields grinding advantage, this exclusion is the thing to revisit.
 //!
 //! The contract is exact over the projection, not over the whole Fiat-Shamir
 //! transcript, and `docs/coverage.yaml` says so.
@@ -258,9 +259,21 @@ pub fn observe_demo_transcript(
         .lifting_log_size
         .unwrap_or(DEMO_LOG_ROWS + config.fri_config.log_blowup_factor);
     let query_count = fixture.config.fri_config.n_queries;
-    let trace = observed.trace("observed-transcript")?;
+    // The trace's case_id is its stable execution identity and part of its
+    // content-addressed digest, so it must distinguish runs rather than collapse
+    // them onto one label: derive it from the observed configuration.
+    let case_id = match nonce_override {
+        Some(nonce) => format!("observed-transcript-pow{pow_bits}-nonce-{nonce}"),
+        None => format!("observed-transcript-pow{pow_bits}-canonical-nonce"),
+    };
+    let trace = observed.trace(&case_id)?;
+    // `query_domain_log_size` is a `u32`; a checked shift keeps the derivation
+    // fail-closed instead of panicking on an out-of-range shift width.
+    let query_domain_size = 1usize
+        .checked_shl(query_domain_log_size)
+        .ok_or(TranscriptObserveError::DomainSize(query_domain_log_size))?;
     Ok(ObservedTranscriptRun {
-        contract: demo_transcript_contract(pow_bits, query_count, 1 << query_domain_log_size),
+        contract: demo_transcript_contract(pow_bits, query_count, query_domain_size),
         trace,
         outcome,
     })
@@ -286,4 +299,7 @@ pub enum TranscriptObserveError {
     /// The deterministic fixture could not be built.
     #[error("transcript fixture build failed: {0}")]
     Fixture(String),
+    /// The derived query-domain log size does not fit a machine word.
+    #[error("transcript query-domain log size {0} does not fit a machine word")]
+    DomainSize(u32),
 }

@@ -71,5 +71,5 @@ pub const STWO_DEMO_TARGET: &str = "stwo-demo-transition-v1";
 /// Stable source identity used in boundary artifacts.
 ///
 /// `scripts/verify-stwo-checkout.sh` independently checks that the sibling
-/// checkout equals this baseline plus AIRLock's two checked patches.
+/// checkout equals this baseline plus AIRLock's three checked patches.
 pub const STWO_SOURCE_ID: &str = "stwo@f0d79b0fad440dcb0aaf1e20470fdbb37993ea2a+patches:accessor=7782a94a63a40e86b760d76dc37d2a6833921c5dfad5073b62972d640b90742a;consumption=cdef8d226336b766ceeeddcac410c535c1d669fce88081c58ddc8221371d9a23;transcript=b3552824e625e11c1a4da708669bd78284f2cf10ace5c21d8fd6b6bd164696f3";
