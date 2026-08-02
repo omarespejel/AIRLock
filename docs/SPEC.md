@@ -246,8 +246,8 @@ AuditIR claim follows from a transcript observation, statement binding stays
 `OUT_OF_MODEL`, and the evidence it produces is one unsigned content-addressed
 trace per case. The sampled-value exclusion is a judgement call recorded in the
 module documentation: the pinned verifier absorbs those values before their shape
-is reconciled, which matches review rule 3, but no attacker capability follows
-from the ordering and the concrete panic consequence is already observed in the
+is reconciled, which matches review rule 3, but no attacker advantage we have
+identified follows from the ordering, and the concrete panic consequence is already observed in the
 verifier-boundary lane.
 
 ## Phase-bound witness replay
